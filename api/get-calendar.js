@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-  // Nastavení CORS hlaviček, aby frontend mohl data přečíst
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -12,10 +11,11 @@ export default async function handler(req, res) {
   const icloudUrl = "https://icloud.com";
 
   try {
-    // Přidáváme User-Agent hlavičku, protože Apple servery občas požadavky bez ní odmítají
+    // Použijeme hlavičku 'Wget' nebo 'curl', aby Apple věděl, že chceme čistá iCal data a ne HTML stránku
     const response = await fetch(icloudUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Wget/1.21.1',
+        'Accept': 'text/calendar, text/plain'
       }
     });
 
@@ -25,12 +25,10 @@ export default async function handler(req, res) {
 
     const data = await response.text();
     
-    // Explicitně nastavíme, že vracíme text/calendar
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     return res.status(200).send(data);
 
   } catch (error) {
-    // Zachytíme chybu, aby server nespadl s kódem 500/Runtime Error
     return res.status(500).json({ error: "Chyba při komunikaci s iCloudem", details: error.message });
   }
 }
