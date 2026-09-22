@@ -66,7 +66,7 @@ export default async function handler(req, res) {
   events.sort((a, b) => a.start - b.start);
   const dnes = new Date();
   dnes.setHours(0,0,0,0);
-  const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 4);
+  const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 5);
 
   // České popisky a synchronizace času
   const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
