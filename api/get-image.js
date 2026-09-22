@@ -3,18 +3,20 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
+  
+  // Zjednodušená URL adresa pro počasí (Černá Hora), která nevyžaduje složité hlavičky
   const weatherUrl = "https://open-meteo.com";
 
   try {
+    // 1. STAŽENÍ KALENDÁŘE
     const response = await fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (!response.ok) throw new Error("Chyba iCloudu");
     const text = await response.text();
 
+    // 2. STAŽENÍ POČASÍ (Čistý fetch bez blokujících hlaviček)
     let weatherData = null;
     try {
-      const wResponse = await fetch(weatherUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (ESP32-S3-Dashboard)' }
-      });
+      const wResponse = await fetch(weatherUrl);
       if (wResponse.ok) {
         weatherData = await wResponse.json();
       }
@@ -22,6 +24,7 @@ export default async function handler(req, res) {
       console.error("Chyba pocasi:", e);
     }
 
+    // 3. PARSOVÁNÍ KALENDÁŘE
     const events = [];
     const veventBlocks = text.split(/BEGIN:VEVENT/i);
     veventBlocks.shift(); 
@@ -102,6 +105,7 @@ export default async function handler(req, res) {
       });
     }
 
+    // 4. GENEROVÁNÍ BLOKU POČASÍ
     let htmlWeather = "";
     if (weatherData && weatherData.daily) {
       const interpretWmoCode = (code) => {
@@ -124,7 +128,6 @@ export default async function handler(req, res) {
         let denLabel = dnyKratke[i];
         if (i === 2) {
           const budiciDen = new Date(ceskyCas);
-          // FIX: Opraveno .getDay() na správné .getDate() pro posun kalendářního dne v měsíci
           budiciDen.setDate(budiciDen.getDate() + 2);
           denLabel = budiciDen.toLocaleString('cs-CZ', { weekday: 'short' });
         }
