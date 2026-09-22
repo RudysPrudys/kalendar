@@ -2,8 +2,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
-  // TADY JE VAŠE SPRÁVNÁ ADRESA S CALDAV (Změněno na funkční subdoménu calendars)
-  const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
+  const icloudUrl = "https://icloud.com";
 
   try {
     const response = await fetch(icloudUrl, {
@@ -21,8 +20,9 @@ export default async function handler(req, res) {
       const dtstartMatch = block.match(/DTSTART(?:\s*;.*?)?:(.*)/i);
       const isAllDay = block.includes("VALUE=DATE");
 
-      if (dtstartMatch) {
-        const cleanStr = dtstartMatch.replace(/[\r\n]/g, "").trim();
+      if (dtstartMatch && dtstartMatch[1]) {
+        // OPRAVA: Čistíme text přímo z nalezené skupiny, nikoliv z celého pole dtstartMatch
+        const cleanStr = dtstartMatch[1].replace(/[\r\n]/g, "").trim();
         const year = parseInt(cleanStr.substring(0, 4));
         const month = parseInt(cleanStr.substring(4, 6)) - 1;
         const day = parseInt(cleanStr.substring(6, 8));
@@ -41,17 +41,15 @@ export default async function handler(req, res) {
         }
 
         events.push({
-          summary: summaryMatch ? summaryMatch.replace(/[\r\n]/g, "").trim() : "Bez názvu",
+          summary: summaryMatch && summaryMatch[1] ? summaryMatch[1].replace(/[\r\n]/g, "").trim() : "Bez nazvu",
           start: startDate,
           isAllDay: isAllDay
         });
       }
     }
 
-    // Seřadit chronologicky
     events.sort((a, b) => a.start - b.start);
 
-    // Filtr: Ukážeme vše od dnešního dne
     const dnes = new Date();
     dnes.setHours(0,0,0,0);
     const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 5);
