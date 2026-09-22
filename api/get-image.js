@@ -3,17 +3,13 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
-  
-  // Přesné GPS souřadnice pro lokalitu Černá Hora, ČR
   const weatherUrl = "https://open-meteo.com";
 
   try {
-    // 1. STAŽENÍ KALENDÁŘE
     const response = await fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (!response.ok) throw new Error("Chyba iCloudu");
     const text = await response.text();
 
-    // 2. STAŽENÍ POČASÍ (S OPRAVENOU USER-AGENT HLAVIČKOU)
     let weatherData = null;
     try {
       const wResponse = await fetch(weatherUrl, {
@@ -23,10 +19,9 @@ export default async function handler(req, res) {
         weatherData = await wResponse.json();
       }
     } catch (e) {
-      console.error("Chyba načítání počasí:", e);
+      console.error("Chyba pocasi:", e);
     }
 
-    // 3. PARSOVÁNÍ KALENDÁŘE
     const events = [];
     const veventBlocks = text.split(/BEGIN:VEVENT/i);
     veventBlocks.shift(); 
@@ -65,7 +60,6 @@ export default async function handler(req, res) {
 
     events.sort((a, b) => a.start - b.start);
 
-    // Limit na 4 události pro udržení prostoru pro počasí
     const dnes = new Date();
     dnes.setHours(0,0,0,0);
     const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 4);
@@ -74,7 +68,6 @@ export default async function handler(req, res) {
     const dnyKratke = ["Dnes", "Zítra", "Pozítří"];
     const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
     
-    // Přesný český čas
     const aktualniDatum = new Date();
     const ceskyCasStr = aktualniDatum.toLocaleString("en-US", { timeZone: "Europe/Prague" });
     const ceskyCas = new Date(ceskyCasStr);
@@ -109,7 +102,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. GENEROVÁNÍ BLOKU POČASÍ
     let htmlWeather = "";
     if (weatherData && weatherData.daily) {
       const interpretWmoCode = (code) => {
@@ -163,22 +155,17 @@ export default async function handler(req, res) {
       </head>
       <body>
         <div class="dashboard">
-          <!-- LEVÝ SLOUPEC -->
           <div class="left-panel">
             <div style="font-size: 14px; font-weight: 800; color: #ef4444; letter-spacing: 2px; margin-bottom: 20px; text-transform: uppercase;">${jmenoDne}</div>
             <div style="font-size: 110px; font-weight: 900; color: #ffffff; line-height: 95px; margin-bottom: 0px;">${cisloDne}</div>
             <div style="font-size: 22px; font-weight: 600; color: #a0a0ab; margin-bottom: 30px;">${jmenoMesice}</div>
             <div style="background: #27272a; color: #71717a; padding: 6px 15px; border-radius: 15px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;">AKTUALIZOVÁNO v ${casAktualizace}</div>
           </div>
-          
-          <!-- PRAVÝ SLOUPEC -->
           <div class="right-panel">
             <div style="width:100%; display:flex; flex-direction:column;">
               <div style="font-size: 13px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 15px;">RODINNÝ KALENDÁŘ</div>
               ${htmlEvents}
             </div>
-            
-            <!-- BLOK PŘEDPOVĚDI POČASÍ -->
             ${htmlWeather}
           </div>
         </div>
