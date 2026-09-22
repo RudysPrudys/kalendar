@@ -3,8 +3,6 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
-  
-  // Zjednodušená URL adresa pro počasí (Černá Hora), která nevyžaduje složité hlavičky
   const weatherUrl = "https://open-meteo.com";
 
   try {
@@ -13,7 +11,7 @@ export default async function handler(req, res) {
     if (!response.ok) throw new Error("Chyba iCloudu");
     const text = await response.text();
 
-    // 2. STAŽENÍ POČASÍ (Čistý fetch bez blokujících hlaviček)
+    // 2. STAŽENÍ POČASÍ
     let weatherData = null;
     try {
       const wResponse = await fetch(weatherUrl);
@@ -34,6 +32,7 @@ export default async function handler(req, res) {
       const dtstartMatch = block.match(/DTSTART(?:\s*;.*?)?:(.*)/i);
       const isAllDay = block.includes("VALUE=DATE");
 
+      // DEFINITIVNÍ OPRAVA: Použití správného indexu [1] pro vytažení textu z pole
       if (dtstartMatch && dtstartMatch[1]) {
         const cleanStr = dtstartMatch[1].replace(/[\r\n]/g, "").trim();
         const year = parseInt(cleanStr.substring(0, 4));
@@ -105,7 +104,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. GENEROVÁNÍ BLOKU POČASÍ
+    // 4. VYKRESLENÍ BLOKU POČASÍ
     let htmlWeather = "";
     if (weatherData && weatherData.daily) {
       const interpretWmoCode = (code) => {
