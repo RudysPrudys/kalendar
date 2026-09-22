@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   }
 
   // OPRAVA: Změněno caldav.icloud.com na calendars.icloud.com, což obchází HTML přihlašovací smyčku Applu
-  const icloudUrl = "https://icloud.com";
+  const icloudUrl = "https://p41-caldav.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk31hjFDdqWDNGVWlWQfYhaP2CsHUq8WVCaQbZTnxrs1zpRHvU8KsBFr0Qf1zubAb4k";
 
   try {
     const response = await fetch(icloudUrl, {
