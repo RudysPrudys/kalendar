@@ -5,60 +5,60 @@ export default async function handler(req, res) {
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
   const weatherUrl = "https://open-meteo.com";
 
-  let text = "";
+  let icalRawText = "";
   let weatherData = null;
 
-  // 1. STAŽENÍ DATA KALENDÁŘE
+  // 1. NEZÁVISLÉ STAŽENÍ KALENDÁŘE
   try {
     const response = await fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-    if (response.ok) text = await response.text();
+    if (response.ok) icalRawText = await response.text();
   } catch (e) {
-    console.error("iCloud error:", e);
+    console.error("iCloud sync error");
   }
 
-  // 2. STAŽENÍ DATA POČASÍ
+  // 2. NEZÁVISLÉ STAŽENÍ POČASÍ
   try {
-    const wResponse = await fetch(weatherUrl);
+    const wResponse = await fetch(weatherUrl, { headers: { 'User-Agent': 'ElecrowPanel/1.0' } });
     if (wResponse.ok) weatherData = await wResponse.json();
   } catch (e) {
-    console.error("Počasí error:", e);
+    console.error("Meteo sync error");
   }
 
   // 3. PARSOVÁNÍ KALENDÁŘE
   const events = [];
-  if (text) {
-    const veventBlocks = text.split(/BEGIN:VEVENT/i);
-    veventBlocks.shift(); 
+  if (icalRawText && icalRawText.includes("BEGIN:VEVENT")) {
+    const lines = icalRawText.split(/\r?\n/);
+    let currentEvent = null;
 
-    for (let block of veventBlocks) {
-      const summaryMatch = block.match(/SUMMARY(?:\s*;.*?)?:(.*)/i);
-      const dtstartMatch = block.match(/DTSTART(?:\s*;.*?)?:(.*)/i);
-      const isAllDay = block.includes("VALUE=DATE");
-
-      if (dtstartMatch && dtstartMatch[1]) {
-        const cleanStr = dtstartMatch[1].replace(/[\r\n]/g, "").trim();
-        const year = parseInt(cleanStr.substring(0, 4));
-        const month = parseInt(cleanStr.substring(4, 6)) - 1;
-        const day = parseInt(cleanStr.substring(6, 8));
-        
-        let startDate;
-        if (isAllDay || cleanStr.length < 9) {
-          startDate = new Date(year, month, day, 0, 0, 0);
-        } else {
-          const hour = parseInt(cleanStr.substring(9, 11)) || 0;
-          const minute = parseInt(cleanStr.substring(11, 13)) || 0;
-          if (cleanStr.endsWith("Z")) {
-            startDate = new Date(Date.UTC(year, month, day, hour, minute, 0));
+    for (let line of lines) {
+      const trimmed = line.trim();
+      if (trimmed === "BEGIN:VEVENT") {
+        currentEvent = { summary: "Bez názvu", start: null, isAllDay: false };
+      } else if (trimmed === "END:VEVENT" && currentEvent) {
+        if (currentEvent.start) events.push(currentEvent);
+        currentEvent = null;
+      } else if (currentEvent) {
+        if (trimmed.startsWith("SUMMARY:")) {
+          currentEvent.summary = trimmed.replace("SUMMARY:", "").trim();
+        } else if (trimmed.startsWith("DTSTART")) {
+          const cleanPart = trimmed.split(":").pop().trim();
+          const year = parseInt(cleanPart.substring(0, 4));
+          const month = parseInt(cleanPart.substring(4, 6)) - 1;
+          const day = parseInt(cleanPart.substring(6, 8));
+          
+          if (trimmed.includes("VALUE=DATE") || cleanPart.length < 9) {
+            currentEvent.start = new Date(year, month, day, 0, 0, 0);
+            currentEvent.isAllDay = true;
           } else {
-            startDate = new Date(year, month, day, hour, minute, 0);
+            const hour = parseInt(cleanPart.substring(9, 11)) || 0;
+            const minute = parseInt(cleanPart.substring(11, 13)) || 0;
+            if (cleanPart.endsWith("Z")) {
+              currentEvent.start = new Date(Date.UTC(year, month, day, hour, minute, 0));
+            } else {
+              currentEvent.start = new Date(year, month, day, hour, minute, 0);
+            }
           }
         }
-
-        events.push({
-          summary: summaryMatch && summaryMatch[1] ? summaryMatch[1].replace(/[\r\n]/g, "").trim() : "Bez názvu",
-          start: startDate,
-          isAllDay: isAllDay
-        });
       }
     }
   }
@@ -81,14 +81,16 @@ export default async function handler(req, res) {
 
   // VYSTAVENÍ HTML PRO UDÁLOSTI
   let htmlEvents = "";
-  if (budouciEvents.length === 0) {
-    htmlEvents = `<div style="color:#86868b; text-align:center; padding:50px 0; font-size:18px;">Žádné nadcházející události</div>`;
+  if (!icalRawText) {
+    htmlEvents = `<div style="color:#e11d48; text-align:center; padding:35px 0; font-size:15px; font-weight:600; background:#27272a; border-radius:10px;">⚠️ iCloud dočasně zablokoval přístup.<br><span style="font-size:12px; color:#a0a0ab; font-weight:400;">Odmknutí proběhne automaticky za cca 15 min.</span></div>`;
+  } else if (budouciEvents.length === 0) {
+    htmlEvents = `<div style="color:#86868b; text-align:center; padding:50px 0; font-size:16px;">Žádné nadcházející události</div>`;
   } else {
     budouciEvents.forEach(ev => {
       const evDencislo = ev.start.getDate();
       const evDenvTyzdni = ev.start.toLocaleString('cs-CZ', { weekday: 'short' }).toUpperCase();
       const timeString = ev.isAllDay ? "Celý den" : ev.start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
-      const cleanSummary = ev.summary.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const cleanSummary = ev.summary.replace(/\\,/g, ",").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
       htmlEvents += `
         <div style="display:flex; align-items:center; background:#2c2c2e; padding:8px 12px; margin-bottom:5px; border-radius:10px; border-left:4px solid #0a84ff;">
@@ -106,7 +108,7 @@ export default async function handler(req, res) {
 
   // VYSTAVENÍ HTML PRO POČASÍ
   let htmlWeather = "";
-  if (weatherData && weatherData.daily) {
+  if (weatherData && weatherData.daily && weatherData.daily.weather_code) {
     const codes = {
       0: { txt: "Jasno", ico: "☀️" }, 1: { txt: "Polojasno", ico: "⛅" }, 2: { txt: "Polojasno", ico: "⛅" }, 3: { txt: "Polojasno", ico: "⛅" },
       45: { txt: "Mlha", ico: "🌫️" }, 48: { txt: "Mlha", ico: "🌫️" }, 51: { txt: "Mrholení", ico: "🌧️" }, 53: { txt: "Mrholení", ico: "🌧️" },
@@ -118,7 +120,7 @@ export default async function handler(req, res) {
     for (let i = 0; i < 3; i++) {
       const maxT = Math.round(weatherData.daily.temperature_2m_max[i]);
       const minT = Math.round(weatherData.daily.temperature_2m_min[i]);
-      const code = weatherData.daily.weathercode[i];
+      const code = weatherData.daily.weather_code[i];
       const wInfo = codes[code] || { txt: "Mraky", ico: "☁️" };
 
       let denLabel = dnyKratke[i];
@@ -141,7 +143,6 @@ export default async function handler(req, res) {
     htmlWeather = `<div style="color:#71717a; text-align:center; font-size:12px; padding:15px; width:100%; background:#18181b; border-radius:12px; border:1px solid #27272a;">Předpověď počasí nedostupná</div>`;
   }
 
-  // FINÁLNÍ ŠABLONA
   const finalHtml = `
     <!DOCTYPE html>
     <html>
