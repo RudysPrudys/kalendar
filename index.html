@@ -14,7 +14,6 @@
             --badge-bg: #f5f5f7;
         }
 
-        /* Automatický Tmavý režim podle nastavení telefonu */
         @media (prefers-color-scheme: dark) {
             :root {
                 --primary-color: #0a84ff;
@@ -65,56 +64,57 @@
     const statusText = document.getElementById('status-text');
     const calNameElement = document.getElementById('cal-name');
 
-    function parseiCalRaw(text) {
+    // Pokročilý parser, který zvládne jakákoliv skrytá nastavení iCloudu
+    function parseiCalRobust(text) {
         const events = [];
-        const lines = text.split(/\r?\n/);
-        let currentEvent = null;
-
-        for (let line of lines) {
-            if (line.startsWith("X-WR-CALNAME:")) {
-                calNameElement.innerText = line.replace("X-WR-CALNAME:", "").trim();
-            }
+        
+        // Získání názvu kalendáře bez ohledu na formátování řádku
+        const calNameMatch = text.match(/X-WR-CALNAME:(.*)/i);
+        if (calNameMatch && calNameMatch[1]) {
+            calNameElement.innerText = calNameMatch[1].trim();
         }
 
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i].trim();
+        // Rozdělení textu na jednotlivé bloky událostí (VEVENT)
+        const veventBlocks = text.split(/BEGIN:VEVENT/i);
+        veventBlocks.shift(); // Odstraníme hlavičku kalendáře před první událostí
+
+        for (let block of veventBlocks) {
+            // Hledáme parametry uvnitř bloku události pomocí flexibilních regulárních výrazů
+            const summaryMatch = block.match(/SUMMARY(?:\s*;.*?)?:(.*)/i);
+            const locationMatch = block.match(/LOCATION(?:\s*;.*?)?:(.*)/i);
             
-            if (line === "BEGIN:VEVENT") {
-                currentEvent = { summary: "Bez názvu", location: "", startRaw: "", isAllDay: false };
-            } else if (line === "END:VEVENT" && currentEvent) {
-                if (currentEvent.startRaw) {
-                    currentEvent.start = parseiCalDate(currentEvent.startRaw, currentEvent.isAllDay);
-                    events.push(currentEvent);
-                }
-                currentEvent = null;
-            } else if (currentEvent) {
-                if (line.startsWith("SUMMARY:")) currentEvent.summary = line.replace("SUMMARY:", "").trim();
-                if (line.startsWith("LOCATION:")) currentEvent.location = line.replace("LOCATION:", "").trim();
-                
-                // Podpora pro klasický čas i celodenní události
-                if (line.startsWith("DTSTART:")) {
-                    currentEvent.startRaw = line.replace("DTSTART:", "").trim();
-                } else if (line.startsWith("DTSTART;VALUE=DATE:")) {
-                    currentEvent.startRaw = line.replace("DTSTART;VALUE=DATE:", "").trim();
-                    currentEvent.isAllDay = true;
-                }
+            // Hledáme začátek času (může obsahovat parametr TZID nebo VALUE=DATE)
+            const dtstartMatch = block.match(/DTSTART(?:\s*;.*?)?:(.*)/i);
+            const isAllDay = block.includes("VALUE=DATE");
+
+            if (dtstartMatch && dtstartMatch[1]) {
+                const startRaw = dtstartMatch[1].trim();
+                const startDate = parseiCalDate(startRaw, isAllDay);
+
+                events.push({
+                    summary: summaryMatch ? summaryMatch[1].trim() : "Bez názvu",
+                    location: locationMatch ? locationMatch[1].trim() : "",
+                    start: startDate,
+                    isAllDay: isAllDay
+                });
             }
         }
         return events;
     }
 
     function parseiCalDate(dateStr, isAllDay) {
-        const cleanStr = dateStr.split(":").pop();
-        const year = cleanStr.substring(0, 4);
-        const month = cleanStr.substring(4, 6) - 1;
-        const day = cleanStr.substring(6, 8);
+        // Vyčištění textu od případných zbytků formátování
+        const cleanStr = dateStr.replace(/[\r\n]/g, "").trim();
+        const year = parseInt(cleanStr.substring(0, 4));
+        const month = parseInt(cleanStr.substring(4, 6)) - 1;
+        const day = parseInt(cleanStr.substring(6, 8));
         
-        if (isAllDay) {
+        if (isAllDay || cleanStr.length < 9) {
             return new Date(year, month, day, 0, 0, 0);
         }
         
-        const hour = cleanStr.substring(9, 11) || 0;
-        const minute = cleanStr.substring(11, 13) || 0;
+        const hour = parseInt(cleanStr.substring(9, 11)) || 0;
+        const minute = parseInt(cleanStr.substring(11, 13)) || 0;
         
         if (cleanStr.endsWith("Z")) {
             return new Date(Date.UTC(year, month, day, hour, minute, 0));
@@ -129,21 +129,21 @@
                 throw new Error("Nepodařilo se stáhnout data z API.");
             }
             const icalText = await response.text();
-            let events = parseiCalRaw(icalText);
+            
+            // Spuštění nového robustního parsování
+            let events = parseiCalRobust(icalText);
 
-            // Seřadit chronologicky
+            // Řazení chronologicky od nejbližších
             events.sort((a, b) => a.start - b.start);
 
-            // Zobrazíme události od včerejška (aby byly vidět i dnešní celodenní a nedávné)
-            const vcera = new Date();
-            vcera.setDate(vcera.getDate() - 1);
-            vcera.setHours(0,0,0,0);
-            
-            //events = events.filter(ev => ev.start >= vcera);
+            // Zobrazíme události od dnešního dne
+            const dnes = new Date();
+            dnes.setHours(0,0,0,0);
+            events = events.filter(ev => ev.start >= dnes);
 
             if (events.length === 0) {
-                calendarContent.innerHTML = "<p style='text-align:center;color:var(--status-color);'>Žádné nadcházející události v iCloudu.</p>";
-                statusText.innerText = "Aktualizováno (Kalendář je prázdný).";
+                calendarContent.innerHTML = "<p style='text-align:center;color:var(--status-color);'>V tomto iCloudu nebyly nalezeny žádné budoucí události.</p>";
+                statusText.innerText = "Aktualizováno (Seznam je prázdný).";
                 return;
             }
 
@@ -164,8 +164,6 @@
                 monthEvents.forEach(ev => {
                     const dayNum = ev.start.getDate();
                     const dayName = ev.start.toLocaleString('cs-CZ', { weekday: 'short' });
-                    
-                    // Formátování času (u celodenních skryjeme hodiny)
                     const timeString = ev.isAllDay ? "Celý den" : ev.start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
                     const locationHtml = ev.location ? `<div class="event-location">📍 ${ev.location}</div>` : '';
 
@@ -196,5 +194,3 @@
 
     loadCalendar();
 </script>
-</body>
-</html>
