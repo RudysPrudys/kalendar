@@ -51,18 +51,22 @@ export default async function handler(req, res) {
 
     const dnes = new Date();
     dnes.setHours(0,0,0,0);
+    
+    // Ponecháváme zobrazení všech 5 událostí!
     const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 5);
 
     const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
     const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
     
+    // DOKONALÁ OPRAVA ČASU: Automatická detekce českého času (letní i zimní posun)
     const aktualniDatum = new Date();
-    aktualniDatum.setHours(aktualniDatum.getHours() + 2);
+    const ceskyCasStr = aktualniDatum.toLocaleString("en-US", { timeZone: "Europe/Prague" });
+    const ceskyCas = new Date(ceskyCasStr);
     
-    const jmenoDne = dnyTyždne[aktualniDatum.getDay()];
-    const cisloDne = aktualniDatum.getDate();
-    const jmenoMesice = mesice[aktualniDatum.getMonth()];
-    const casAktualizace = aktualniDatum.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+    const jmenoDne = dnyTyždne[ceskyCas.getDay()];
+    const cisloDne = ceskyCas.getDate();
+    const jmenoMesice = mesice[ceskyCas.getMonth()];
+    const casAktualizace = ceskyCas.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
     let htmlEvents = "";
     
@@ -74,22 +78,22 @@ export default async function handler(req, res) {
         const evDenvTyzdni = ev.start.toLocaleString('cs-CZ', { weekday: 'short' }).toUpperCase();
         const timeString = ev.isAllDay ? "Celý den" : ev.start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
+        // VYŠPERKOVÁNÍ: Zmenšili jsme padding na 8px a margin na 6px, aby se 5 bublin luxusně vešlo pod sebe
         htmlEvents += `
-          <div style="display:flex; align-items:center; background:#2c2c2e; padding:12px 15px; margin-bottom:10px; border-radius:12px; border-left:4px solid #0a84ff;">
-            <div style="background:#1c1c1e; padding:5px 10px; border-radius:8px; text-align:center; min-width:45px; margin-right:15px;">
-              <span style="font-size:10px; font-weight:800; color:#ef4444; display:block; margin-bottom:1px;">${evDenvTyzdni}</span>
-              <span style="font-size:18px; font-weight:700; color:#ffffff; display:block; line-height:18px;">${evDencislo}</span>
+          <div style="display:flex; align-items:center; background:#2c2c2e; padding:8px 12px; margin-bottom:6px; border-radius:10px; border-left:4px solid #0a84ff;">
+            <div style="background:#1c1c1e; padding:4px 8px; border-radius:6px; text-align:center; min-width:42px; margin-right:12px;">
+              <span style="font-size:9px; font-weight:800; color:#ef4444; display:block; margin-bottom:1px;">${evDenvTyzdni}</span>
+              <span style="font-size:16px; font-weight:700; color:#ffffff; display:block; line-height:16px;">${evDencislo}</span>
             </div>
-            <div style="flex:1;">
-              <div style="font-size:18px; font-weight:600; color:#f5f5f7; margin-bottom:2px;">${ev.summary}</div>
-              <div style="font-size:13px; color:#3b82f6; font-weight:700;">🕒 ${timeString}</div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:16px; font-weight:600; color:#f5f5f7; margin-bottom:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${ev.summary}</div>
+              <div style="font-size:12px; color:#3b82f6; font-weight:700;">🕒 ${timeString}</div>
             </div>
           </div>
         `;
       });
     }
 
-    // Vygenerujeme čisté HTML s pevnou velikostí 800x480 pixelů pro 7" Elecrow displej
     const finalHtml = `
       <!DOCTYPE html>
       <html>
@@ -111,24 +115,24 @@ export default async function handler(req, res) {
             height: 480px; 
             display: flex; 
             background: #09090b; 
-            align-items: stretch; /* Vynutí, aby oba sloupce měly VŽDY stejnou výšku až dolů */
+            align-items: stretch;
           }
           .left-panel { 
             width: 240px; 
-            height: 100%; /* Vyplní celých 480px výšky dolů */
+            height: 100%; 
             background: #111113; 
             border-right: 2px solid #27272a; 
             display: flex; 
             flex-direction: column; 
             align-items: center; 
-            justify-content: center; /* Návrat k vašemu pěknému centrování na střed */
+            justify-content: center; 
             padding: 30px 20px; 
             text-align: center; 
           }
           .right-panel { 
             width: 560px; 
             height: 100%; 
-            padding: 35px 30px; 
+            padding: 25px 25px 15px 25px; /* VYŠPERKOVÁNÍ: Optimalizované vnější okraje pro plné využití výšky */
             display: flex; 
             flex-direction: column; 
           }
@@ -136,7 +140,7 @@ export default async function handler(req, res) {
       </head>
       <body>
         <div class="dashboard">
-          <!-- LEVÝ SLOUPEC (Nyní dokonale protažený až dolů na 480px) -->
+          <!-- LEVÝ SLOUPEC -->
           <div class="left-panel">
             <div style="font-size: 14px; font-weight: 800; color: #ef4444; letter-spacing: 2px; margin-bottom: 20px; text-transform: uppercase;">${jmenoDne}</div>
             <div style="font-size: 110px; font-weight: 900; color: #ffffff; line-height: 95px; margin-bottom: 0px;">${cisloDne}</div>
@@ -146,8 +150,8 @@ export default async function handler(req, res) {
           
           <!-- PRAVÝ SLOUPEC -->
           <div class="right-panel">
-            <div style="font-size: 14px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 25px;">RODINNÝ KALENDÁŘ</div>
-            <div style="flex: 1;">
+            <div style="font-size: 13px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 15px;">RODINNÝ KALENDÁŘ</div>
+            <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-start;">
               ${htmlEvents}
             </div>
           </div>
