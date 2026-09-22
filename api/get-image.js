@@ -3,8 +3,6 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
-  
-  // UKOTVENO: Přesný a vyčištěný odkaz na Open-Meteo API pro Černou Horu
   const weatherUrl = "https://open-meteo.com";
 
   let icalRawText = "";
@@ -18,12 +16,10 @@ export default async function handler(req, res) {
 
     if (icloudResponse.ok) icalRawText = await icloudResponse.text();
     if (weatherResponse.ok) weatherData = await weatherResponse.json();
-
   } catch (e) {
-    console.error("Chyba stahování dat:", e);
+    console.error("Network error");
   }
 
-  // Parsování kalendáře řádek po řádku
   const events = [];
   if (icalRawText) {
     const lines = icalRawText.split(/\r?\n/);
@@ -40,6 +36,7 @@ export default async function handler(req, res) {
         if (trimmed.startsWith("SUMMARY:")) {
           currentEvent.summary = trimmed.replace("SUMMARY:", "").trim();
         } else if (trimmed.startsWith("DTSTART")) {
+          // STRKTNÍ OPRAVA: cleanPart je bezpečně izolována pouze uvnitř tohoto bloku
           const cleanPart = trimmed.split(":").pop().trim();
           const year = parseInt(cleanPart.substring(0, 4));
           const month = parseInt(cleanPart.substring(4, 6)) - 1;
@@ -67,7 +64,6 @@ export default async function handler(req, res) {
   dnes.setHours(0,0,0,0);
   const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 4);
 
-  // Časové synchronizace pro Česko
   const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
   const dnyKratke = ["Dnes", "Zítra", "Pozítří"];
   const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
@@ -78,7 +74,6 @@ export default async function handler(req, res) {
   const jmenoMesice = mesice[ceskyCas.getMonth()];
   const casAktualizace = ceskyCas.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
-  // Vystavení HTML pro kalendářové události
   let htmlEvents = "";
   if (budouciEvents.length === 0) {
     htmlEvents = `<div style="color:#86868b; text-align:center; padding:50px 0; font-size:14px; font-weight:500;">Žádné nadcházející události</div>`;
@@ -103,7 +98,6 @@ export default async function handler(req, res) {
     });
   }
 
-  // Slovník WMO kódů počasí
   const codes = {
     0: { txt: "Jasno", ico: "☀️" }, 1: { txt: "Polojasno", ico: "⛅" }, 2: { txt: "Polojasno", ico: "⛅" }, 3: { txt: "Polojasno", ico: "⛅" },
     45: { txt: "Mlha", ico: "🌫️" }, 48: { txt: "Mlha", ico: "🌫️" }, 51: { txt: "Mrholení", ico: "🌧️" }, 53: { txt: "Mrholení", ico: "🌧️" },
@@ -119,9 +113,9 @@ export default async function handler(req, res) {
   } else {
     jeZaloha = true;
     finalDailyWeather = {
-      temperature_2m_max: [20, 20, 20],
-      temperature_2m_min: [10, 10, 10],
-      weathercode: [1, 1, 1]
+      temperature_2m_max: [12, 13, 11], // Změněno na reálnější podzimní zálohu, pokud by internet vypadl
+      temperature_2m_min: [6, 5, 4],
+      weathercode: [3, 2, 61]
     };
   }
 
@@ -139,7 +133,6 @@ export default async function handler(req, res) {
       denLabel = budiciDen.toLocaleString('cs-CZ', { weekday: 'short' });
     }
 
-    // Pokud jedeme ze zálohy, popisek nám to jasně ukáže
     const zobrazenyText = jeZaloha ? "ZÁLOHA" : wInfo.txt;
 
     htmlWeather += `
