@@ -2,61 +2,78 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
-  const icloudUrl = "https://icloud.comp41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI/open-meteo.com";
+  const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
+  
+  // Použijeme HTTPS volání s jasně definovaným formátem pro spolehlivý přenos přes Vercel proxy
+  const weatherUrl = "https://open-meteo.com";
+
+  let text = "";
+  let weatherData = null;
+
+  // 1. KROK: BEZPEČNÉ STAŽENÍ KALENDÁŘE
+  try {
+    const response = await fetch(icloudUrl, { 
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+      signal: AbortSignal.timeout(4000) // Maximálně 4 vteřiny na odpověď
+    });
+    if (response.ok) {
+      text = await response.text();
+    }
+  } catch (e) {
+    console.error("iCloud fetch failed:", e);
+  }
+
+  // 2. KROK: BEZPEČNÉ STAŽENÍ POČASÍ (Obaleno tak, aby chyba fetch neshodila kalendář)
+  try {
+    const wResponse = await fetch(weatherUrl, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(3000) // Maximálně 3 vteřiny, ať displej nečeká
+    });
+    if (wResponse.ok) {
+      weatherData = await wResponse.json();
+    }
+  } catch (e) {
+    console.error("Open-Meteo fetch failed, přeskakuji:", e);
+  }
 
   try {
-    // 1. STAŽENÍ KALENDÁŘE
-    const response = await fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-    if (!response.ok) throw new Error("Chyba iCloudu");
-    const text = await response.text();
-
-    // 2. STAŽENÍ POČASÍ
-    let weatherData = null;
-    try {
-      const wResponse = await fetch(weatherUrl);
-      if (wResponse.ok) {
-        weatherData = await wResponse.json();
-      }
-    } catch (e) {
-      console.error("Chyba pocasi:", e);
-    }
-
-    // 3. PARSOVÁNÍ KALENDÁŘE
     const events = [];
-    const veventBlocks = text.split(/BEGIN:VEVENT/i);
-    veventBlocks.shift(); 
+    
+    // Zpracujeme kalendář pouze pokud se data úspěšně stáhla
+    if (text) {
+      const veventBlocks = text.split(/BEGIN:VEVENT/i);
+      veventBlocks.shift(); 
 
-    for (let block of veventBlocks) {
-      const summaryMatch = block.match(/SUMMARY(?:\s*;.*?)?:(.*)/i);
-      const dtstartMatch = block.match(/DTSTART(?:\s*;.*?)?:(.*)/i);
-      const isAllDay = block.includes("VALUE=DATE");
+      for (let block of veventBlocks) {
+        const summaryMatch = block.match(/SUMMARY(?:\s*;.*?)?:(.*)/i);
+        const dtstartMatch = block.match(/DTSTART(?:\s*;.*?)?:(.*)/i);
+        const isAllDay = block.includes("VALUE=DATE");
 
-      // TADY JE TA ZASRANÁ OPRAVA: dopsáno [1] na oba řádky!
-      if (dtstartMatch && dtstartMatch[1]) {
-        const cleanStr = dtstartMatch[1].replace(/[\r\n]/g, "").trim();
-        const year = parseInt(cleanStr.substring(0, 4));
-        const month = parseInt(cleanStr.substring(4, 6)) - 1;
-        const day = parseInt(cleanStr.substring(6, 8));
-        
-        let startDate;
-        if (isAllDay || cleanStr.length < 9) {
-          startDate = new Date(year, month, day, 0, 0, 0);
-        } else {
-          const hour = parseInt(cleanStr.substring(9, 11)) || 0;
-          const minute = parseInt(cleanStr.substring(11, 13)) || 0;
-          if (cleanStr.endsWith("Z")) {
-            startDate = new Date(Date.UTC(year, month, day, hour, minute, 0));
+        if (dtstartMatch && dtstartMatch[1]) {
+          const cleanStr = dtstartMatch[1].replace(/[\r\n]/g, "").trim();
+          const year = parseInt(cleanStr.substring(0, 4));
+          const month = parseInt(cleanStr.substring(4, 6)) - 1;
+          const day = parseInt(cleanStr.substring(6, 8));
+          
+          let startDate;
+          if (isAllDay || cleanStr.length < 9) {
+            startDate = new Date(year, month, day, 0, 0, 0);
           } else {
-            startDate = new Date(year, month, day, hour, minute, 0);
+            const hour = parseInt(cleanStr.substring(9, 11)) || 0;
+            const minute = parseInt(cleanStr.substring(11, 13)) || 0;
+            if (cleanStr.endsWith("Z")) {
+              startDate = new Date(Date.UTC(year, month, day, hour, minute, 0));
+            } else {
+              startDate = new Date(year, month, day, hour, minute, 0);
+            }
           }
-        }
 
-        // TADY TAKY: dopsáno [1] pro správný název události
-        events.push({
-          summary: summaryMatch && summaryMatch[1] ? summaryMatch[1].replace(/[\r\n]/g, "").trim() : "Bez názvu",
-          start: startDate,
-          isAllDay: isAllDay
-        });
+          events.push({
+            summary: summaryMatch && summaryMatch[1] ? summaryMatch[1].replace(/[\r\n]/g, "").trim() : "Bez názvu",
+            start: startDate,
+            isAllDay: isAllDay
+          });
+        }
       }
     }
 
@@ -104,6 +121,7 @@ export default async function handler(req, res) {
       });
     }
 
+    // VYKRESLENÍ BLOKU POČASÍ (Pouze pokud se data z Open-Meteo stáhla)
     let htmlWeather = "";
     if (weatherData && weatherData.daily) {
       const interpretWmoCode = (code) => {
@@ -140,6 +158,9 @@ export default async function handler(req, res) {
         `;
       }
       htmlWeather += `</div>`;
+    } else {
+      // Záložní zpráva, pokud by Open-Meteo mělo dočasný výpadek
+      htmlWeather = `<div style="color:#71717a; text-align:center; font-size:12px; padding:15px; width:100%; background:#18181b; border-radius:12px; border:1px solid #27272a;">Předpověď počasí je dočasně nedostupná</div>`;
     }
 
     const finalHtml = `
@@ -179,7 +200,3 @@ export default async function handler(req, res) {
     return res.status(200).send(finalHtml);
 
   } catch (error) {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.status(500).send(`<div style="background:#7f1d1d; color:white; padding:20px; font-family:sans-serif; height:480px;">Chyba: ${error.message}</div>`);
-  }
-}
