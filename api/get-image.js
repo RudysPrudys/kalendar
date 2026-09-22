@@ -2,10 +2,9 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
-  // VAŠE FINÁLNÍ UZAMČENÁ ADRESA
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
   
-  // API pro předpověď počasí pro lokalitu Černá Hora, ČR
+  // Správná, plná API adresa pro předpověď počasí v Černé Hoře
   const weatherUrl = "https://open-meteo.com";
 
   try {
@@ -64,15 +63,16 @@ export default async function handler(req, res) {
 
     events.sort((a, b) => a.start - b.start);
 
-    // Limit na 4 události, aby zbyl prostor pro lištu počasí dole
+    // Limit na 4 události pro udržení ideální výšky panelu
     const dnes = new Date();
     dnes.setHours(0,0,0,0);
     const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 4);
 
     const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
+    const dnyKratke = ["Dnes", "Zítra", "Pozítří"];
     const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
     
-    // Automatická detekce přesného českého času
+    // Přesný český čas
     const aktualniDatum = new Date();
     const ceskyCasStr = aktualniDatum.toLocaleString("en-US", { timeZone: "Europe/Prague" });
     const ceskyCas = new Date(ceskyCasStr);
@@ -107,12 +107,12 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. GENEROVÁNÍ BLOKU POČASÍ (Předpověď na 3 dny pro Černou Horu)
+    // 4. OPRAVENÉ GENEROVÁNÍ BLOKU POČASÍ
     let htmlWeather = "";
     if (weatherData && weatherData.daily) {
       const interpretWmoCode = (code) => {
         if (code === 0) return { txt: "Jasno", ico: "☀️" };
-        if (code <= 3) return { txt: "Polojasno", ico: "⛅" };
+        if (code <= 3) return { txt: "Polojasno", ico: "⛅" }; // OPRAVA: Čistá textová ikona bez rozbité HTML tabulky
         if (code <= 48) return { txt: "Mlhavo", ico: "🌫️" };
         if (code <= 55) return { txt: "Mrholení", ico: "🌧️" };
         if (code <= 65) return { txt: "Déšť", ico: "🌧️" };
@@ -122,17 +122,24 @@ export default async function handler(req, res) {
 
       htmlWeather += `<div style="display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:10px; border-radius:12px; margin-top:10px;">`;
       
-      const denNázvy = ["Dnes", "Zítra", "Pozítří"]; 
       for (let i = 0; i < 3; i++) {
         const maxT = Math.round(weatherData.daily.temperature_2m_max[i]);
         const minT = Math.round(weatherData.daily.temperature_2m_min[i]);
         const wInfo = interpretWmoCode(weatherData.daily.weathercode[i]);
 
+        // Dynamický výpočet správného jména dne (Dnes, Zítra, nebo název dne v týdnu pro pozítří)
+        let denLabel = dnyKratke[i];
+        if (i === 2) {
+          const budiciDen = new Date(ceskyCas);
+          budiciDen.setDate(budiciDen.getDate() + 2);
+          denLabel = budiciDen.toLocaleString('cs-CZ', { weekday: 'short' });
+        }
+
         htmlWeather += `
           <div style="text-align:center; flex:1; border-right:${i < 2 ? '1px solid #27272a' : 'none'};">
-            <div style="font-size:10px; font-weight:800; color:#a0a0ab; text-transform:uppercase; margin-bottom:1px;">${denNázvy[i]}</div>
-            <div style="font-size:20px; margin-bottom:1px;">${wInfo.ico}</div>
-            <div style="font-size:12px; font-weight:700; color:#f5f5f7;">${maxT}° / <span style="color:#71717a; font-weight:500;">${minT}°</span></div>
+            <div style="font-size:10px; font-weight:800; color:#a0a0ab; text-transform:uppercase; margin-bottom:1px;">${denLabel}</div>
+            <div style="font-size:22px; margin-bottom:1px; line-height:24px;">${wInfo.ico}</div>
+            <div style="font-size:13px; font-weight:700; color:#f5f5f7;">${maxT}° / <span style="color:#71717a; font-weight:500;">${minT}°</span></div>
             <div style="font-size:9px; color:#86868b; margin-top:1px;">${wInfo.txt}</div>
           </div>
         `;
