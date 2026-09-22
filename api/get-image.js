@@ -1,25 +1,5 @@
-import https from 'https';
-
-// Pomocná funkce pro stahování dat na jakékoliv verzi Node.js na Vercelu
-function serverFetch(url, options = {}) {
-  return new Promise((resolve, reject) => {
-    const headers = options.headers || {};
-    https.get(url, { headers }, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        resolve({
-          ok: res.statusCode >= 200 && res.statusCode < 300,
-          text: () => Promise.resolve(data),
-          json: () => Promise.resolve(JSON.parse(data))
-        });
-      });
-    }).on('error', (err) => reject(err));
-  });
-}
-
 export default async function handler(req, res) {
-  // HLAVNÍ OPRAVA PRO CACHE: Vercel nebude stránku ukládat do mezipaměti a pokaždé ji načte znovu live
+  // Ochrana proti cache a povolení CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
@@ -33,18 +13,22 @@ export default async function handler(req, res) {
   let icalRawText = "";
   let weatherData = null;
 
+  // Bezpečné stažení dat
   try {
-    const [icalRes, weatherRes] = await Promise.all([
-      serverFetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }),
-      serverFetch(weatherUrl)
-    ]);
-    
+    const icalRes = await fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (icalRes.ok) icalRawText = await icalRes.text();
-    if (weatherRes.ok) weatherData = await weatherRes.json();
   } catch (e) {
-    console.error("Chyba při stahování dat:", e);
+    console.error("iCloud error");
   }
 
+  try {
+    const weatherRes = await fetch(weatherUrl);
+    if (weatherRes.ok) weatherData = await weatherRes.json();
+  } catch (e) {
+    console.error("Weather error");
+  }
+
+  // iCal Parser
   const events = [];
   if (icalRawText) {
     const lines = icalRawText.split(/\r?\n/);
@@ -63,22 +47,22 @@ export default async function handler(req, res) {
         } else if (trimmed.startsWith("DTSTART")) {
           const cleanPart = trimmed.split(":").pop().trim();
           
-          const yStr = cleanPart.substring(0, 4);
-          const mStr = cleanPart.substring(4, 6);
-          const dStr = cleanPart.substring(6, 8);
+          const year = parseInt(cleanPart.substring(0, 4));
+          const month = parseInt(cleanPart.substring(4, 6)) - 1;
+          const day = parseInt(cleanPart.substring(6, 8));
           
           if (trimmed.includes("VALUE=DATE") || cleanPart.length < 9) {
-            // Bezpečné lokální datum pro celodenní události (jako je 29.9. sběr odpadu)
-            currentEvent.start = new Date(`${yStr}-${mStr}-${dStr}T00:00:00`);
+            // Fix pro celodenní události (např. 29.9. Sběr odpadu)
+            currentEvent.start = new Date(year, month, day, 0, 0, 0);
             currentEvent.isAllDay = true;
           } else {
             const hour = parseInt(cleanPart.substring(9, 11)) || 0;
             const minute = parseInt(cleanPart.substring(11, 13)) || 0;
             
             if (cleanPart.endsWith("Z")) {
-              currentEvent.start = new Date(Date.UTC(parseInt(yStr), parseInt(mStr) - 1, parseInt(dStr), hour, minute, 0));
+              currentEvent.start = new Date(Date.UTC(year, month, day, hour, minute, 0));
             } else {
-              currentEvent.start = new Date(parseInt(yStr), parseInt(mStr) - 1, parseInt(dStr), hour, minute, 0);
+              currentEvent.start = new Date(year, month, day, hour, minute, 0);
             }
           }
         }
@@ -86,16 +70,18 @@ export default async function handler(req, res) {
     }
   }
 
+  // Řazení událostí podle času vzestupně
   events.sort((a, b) => a.start - b.start);
   
+  // Dnešní půlnoc pro filtraci, aby se neschovávaly dnešní věci
   const dnesPulnoc = new Date();
   dnesPulnoc.setHours(0, 0, 0, 0);
   
-  // Filtrujeme události od dnešní půlnoci, aby se zobrazilo přesně 5 nadcházejících událostí
+  // Vyfiltrujeme přesně 5 událostí
   const budouciEvents = events.filter(ev => {
-    const evKopie = new Date(ev.start.getTime());
-    evKopie.setHours(0, 0, 0, 0);
-    return evKopie >= dnesPulnoc;
+    const evCas = new Date(ev.start.getTime());
+    evCas.setHours(0,0,0,0);
+    return evCas >= dnesPulnoc;
   }).slice(0, 5);
 
   const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
@@ -107,6 +93,7 @@ export default async function handler(req, res) {
   const jmenoMesice = mesice[ceskyCas.getMonth()];
   const casAktualizace = ceskyCas.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
+  // Generování HTML pro události
   let htmlEvents = "";
   if (budouciEvents.length === 0) {
     htmlEvents = `<div style="color:#86868b; text-align:center; padding:50px 0; font-size:15px; font-weight:500;">Žádné nadcházející události</div>`;
@@ -131,6 +118,7 @@ export default async function handler(req, res) {
     });
   }
 
+  // Generování HTML pro počasí
   let htmlWeather = "";
   if (weatherData && weatherData.daily) {
     const codes = {
@@ -182,8 +170,8 @@ export default async function handler(req, res) {
           <div style="font-size: 95px; font-weight: 900; color: #ffffff; line-height: 80px; margin-bottom: 0px;">${cisloDne}</div>
           <div style="font-size: 20px; font-weight: 600; color: #a0a0ab; margin-bottom: 10px;">${jmenoMesice}</div>
           
-          <!-- PŘIDANÉ SRDÍČKO POD DATUMEM -->
-          <div style="font-size: 24px; margin-bottom: 15px; filter: drop-shadow(0 2px 4px rgba(239,68,68,0.2));">❤️</div>
+          <!-- VYCENTROVANÉ SRDÍČKO -->
+          <div style="font-size: 24px; margin-bottom: 15px;">❤️</div>
           
           <div style="background: #27272a; color: #a0a0ab; padding: 5px 10px; border-radius: 15px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;">AKTUALIZOVÁNO v ${casAktualizace}</div>
         </div>
@@ -192,3 +180,12 @@ export default async function handler(req, res) {
             <div style="font-size: 11px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 8px;">RODINNÝ KALENDÁŘ</div>
             ${htmlEvents}
           </div>
+          <div class="weather-box">${htmlWeather}</div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  res.status(200).send(finalHtml);
+}
