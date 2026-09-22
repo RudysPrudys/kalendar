@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   let icalRawText = "";
   let weatherData = null;
 
-  // 1. STAŽENÍ KALENDÁŘE
+  // 1. NEZÁVISLÉ STAŽENÍ KALENDÁŘE
   try {
     const response = await fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (response.ok) icalRawText = await response.text();
@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     console.error("iCloud sync error");
   }
 
-  // 2. STAŽENÍ POČASÍ
+  // 2. NEZÁVISLÉ STAŽENÍ POČASÍ
   try {
     const wResponse = await fetch(weatherUrl, { headers: { 'User-Agent': 'ElecrowPanel/1.0' } });
     if (wResponse.ok) {
@@ -26,7 +26,7 @@ export default async function handler(req, res) {
     console.error("Meteo sync error");
   }
 
-  // 3. PARSOVÁNÍ KALENDÁŘE
+  // 3. PARSOVÁNÍ KALENDÁŘE ŘÁDEK PO ŘÁDKU
   const events = [];
   if (icalRawText && icalRawText.includes("BEGIN:VEVENT")) {
     const lines = icalRawText.split(/\r?\n/);
@@ -106,7 +106,7 @@ export default async function handler(req, res) {
     });
   }
 
-  // VYSTAVENÍ HTML PRO POČASÍ (S PROTI-BLOKOVACÍ ZÁLOHOU)
+  // VYSTAVENÍ HTML PRO POČASÍ
   const codes = {
     0: { txt: "Jasno", ico: "☀️" }, 1: { txt: "Polojasno", ico: "⛅" }, 2: { txt: "Polojasno", ico: "⛅" }, 3: { txt: "Polojasno", ico: "⛅" },
     45: { txt: "Mlha", ico: "🌫️" }, 48: { txt: "Mlha", ico: "🌫️" }, 51: { txt: "Mrholení", ico: "🌧️" }, 53: { txt: "Mrholení", ico: "🌧️" },
@@ -114,17 +114,15 @@ export default async function handler(req, res) {
     71: { txt: "Sněžení", ico: "❄️" }, 73: { txt: "Sněžení", ico: "❄️" }, 75: { txt: "Sněžení", ico: "❄️" }, 77: { txt: "Sněžení", ico: "❄️" }
   };
 
-  // Pokud nás Open-Meteo zablokovalo, podstrčíme mu dočasná záložní data pro vykreslení
-  let finalDailyWeather = null;
-  if (weatherData && weatherData.daily) {
+  // VYLADĚNO: Pevně definovaná záložní data (Polojasno, 19°C / 9°C), která naskočí při jakékoliv blokaci API
+  let finalDailyWeather = {
+    temperature_2m_max: [19, 18, 17],
+    temperature_2m_min: [9, 8, 7],
+    weathercode: [1, 2, 3]
+  };
+
+  if (weatherData && weatherData.daily && weatherData.daily.weathercode) {
     finalDailyWeather = weatherData.daily;
-  } else {
-    // Záložní data (Polojasno, 19°C), která udrží design živý během blokace
-    finalDailyWeather = {
-      temperature_2m_max: [19, 18, 17],
-      temperature_2m_min: [9, 8, 7],
-      weathercode: [1, 2, 3]
-    };
   }
 
   let htmlWeather = `<div style="display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:10px; border-radius:12px; margin-top:10px; width:100%;">`;
