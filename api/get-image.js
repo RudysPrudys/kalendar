@@ -111,45 +111,50 @@ export default async function handler(req, res) {
             background: #09090b; 
           }
           .left-panel { 
-            width: 240px; /* Mírně zúženo pro více místa vpravo */
+            width: 240px; 
             height: 480px; 
-            background: #111113; /* Hlubší, kontrastnější tmavá barva */
+            background: #111113; 
             border-right: 2px solid #27272a; 
             display: flex; 
             flex-direction: column; 
             align-items: center; 
-            justify-content: center; 
-            padding: 20px; 
+            justify-content: flex-start; /* Změněno na start pro přesné zarovnání shora */
+            padding: 35px 20px; /* Sjednoceno horní odsazení na 35px */
             text-align: center; 
           }
           .right-panel { 
             width: 560px; 
             height: 480px; 
-            padding: 35px 30px; /* Větší odsazení od okrajů obrazovky */
+            padding: 35px 30px; /* Sjednoceno horní odsazení na 35px */
             display: flex; 
             flex-direction: column; 
           }
-          /* Styl pro plynulé scrollování, pokud byste měli více než 4 události */
-          .events-wrapper {
-            flex: 1;
-            overflow: hidden;
+          .all-day-badge {
+            background: #ff9500;
+            color: #000000;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            display: inline-block;
           }
         </style>
       </head>
       <body>
         <div class="dashboard">
-          <!-- LEVÝ SLOUPEC -->
+          <!-- LEVÝ SLOUPEC (Zarovnaný přesně shora jako pravý) -->
           <div class="left-panel">
-            <div style="font-size:18px; font-weight:800; color:#ef4444; letter-spacing:2px; margin-bottom:20px;">${jmenoDne}</div>
-            <div style="font-size:110px; font-weight:900; color:#ffffff; line-height:100px; margin-bottom:10px;">${cisloDne}</div>
-            <div style="font-size:22px; font-weight:600; color:#a0a0ab; margin-bottom:40px;">${jmenoMesice}</div>
-            <div style="background:#27272a; color:#71717a; padding:6px 15px; border-radius:15px; font-size:11px; font-weight:700; letter-spacing:0.5px;">AKTUALIZOVÁNO v ${casAktualizace}</div>
+            <div style="font-size: 14px; font-weight: 800; color: #ef4444; letter-spacing: 2px; margin-bottom: 25px; line-height: 1.2;">${jmenoDne}</div>
+            <div style="font-size: 100px; font-weight: 900; color: #ffffff; line-height: 90px; margin-bottom: 5px;">${cisloDne}</div>
+            <div style="font-size: 22px; font-weight: 600; color: #a0a0ab; margin-bottom: auto; line-height: 1.2;">${jmenoMesice}</div>
+            <div style="background: #27272a; color: #71717a; padding: 6px 15px; border-radius: 15px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-top: 20px;">AKTUALIZOVÁNO v ${casAktualizace}</div>
           </div>
           
           <!-- PRAVÝ SLOUPEC -->
           <div class="right-panel">
-            <div style="font-size:14px; font-weight:800; color:#a0a0ab; letter-spacing:1.5px; margin-bottom:20px;">RODINNÝ KALENDÁŘ</div>
-            <div style="flex:1;">
+            <div style="font-size: 14px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 25px; line-height: 1.2;">RODINNÝ KALENDÁŘ</div>
+            <div style="flex: 1;">
               ${htmlEvents}
             </div>
           </div>
