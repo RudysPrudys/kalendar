@@ -139,7 +139,7 @@
             vcera.setDate(vcera.getDate() - 1);
             vcera.setHours(0,0,0,0);
             
-            events = events.filter(ev => ev.start >= vcera);
+            //events = events.filter(ev => ev.start >= vcera);
 
             if (events.length === 0) {
                 calendarContent.innerHTML = "<p style='text-align:center;color:var(--status-color);'>Žádné nadcházející události v iCloudu.</p>";
