@@ -34,10 +34,9 @@ export default async function handler(req, res) {
       }
     }
 
-    // Seřadit a vyfiltrovat budoucí
+    // Seřadit a vzít prvních 5 událostí bez ohledu na dnešní datum
     events.sort((a, b) => a.date - b.date);
-    const dnes = new Date(); dnes.setHours(0,0,0,0);
-    const budouciEvents = events.filter(e => e.date >= dnes).slice(0, 5); // vezmeme max 5 událostí
+    const budouciEvents = events.slice(0, 5);
 
     // 2. Vygenerování SVG obrázku (vektory o rozlišení 800x480)
     // ESP32 umí snadno zpracovat SVG nebo ho můžeme poslat jako monochromatický bitmapový kód
