@@ -95,10 +95,43 @@ export default async function handler(req, res) {
         <meta charset="UTF-8">
         <style>
           * { box-sizing: border-box; }
-          body { margin:0; padding:0; background:#09090b; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow:hidden; }
-          .dashboard { width:800px; height:480px; display:flex; background:#09090b; }
-          .left-panel { width:250px; height:480px; background:#18181b; border-right:2px solid #27272a; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; text-align:center; }
-          .right-panel { width:550px; height:480px; padding:30px 25px; display:flex; flex-direction:column; }
+          body { 
+            margin: 0; 
+            padding: 0; 
+            background: #09090b; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            overflow: hidden; 
+          }
+          .dashboard { 
+            width: 800px; 
+            height: 480px; 
+            display: flex; 
+            background: #09090b; 
+          }
+          .left-panel { 
+            width: 240px; /* Mírně zúženo pro více místa vpravo */
+            height: 480px; 
+            background: #111113; /* Hlubší, kontrastnější tmavá barva */
+            border-right: 2px solid #27272a; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            padding: 20px; 
+            text-align: center; 
+          }
+          .right-panel { 
+            width: 560px; 
+            height: 480px; 
+            padding: 35px 30px; /* Větší odsazení od okrajů obrazovky */
+            display: flex; 
+            flex-direction: column; 
+          }
+          /* Styl pro plynulé scrollování, pokud byste měli více než 4 události */
+          .events-wrapper {
+            flex: 1;
+            overflow: hidden;
+          }
         </style>
       </head>
       <body>
