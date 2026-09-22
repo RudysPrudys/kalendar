@@ -1,5 +1,6 @@
 import https from 'https';
 
+// Pomocná funkce pro stahování dat na jakékoliv verzi Node.js na Vercelu
 function serverFetch(url, options = {}) {
   return new Promise((resolve, reject) => {
     const headers = options.headers || {};
@@ -18,8 +19,12 @@ function serverFetch(url, options = {}) {
 }
 
 export default async function handler(req, res) {
+  // HLAVNÍ OPRAVA PRO CACHE: Vercel nebude stránku ukládat do mezipaměti a pokaždé ji načte znovu live
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
 
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
@@ -58,13 +63,12 @@ export default async function handler(req, res) {
         } else if (trimmed.startsWith("DTSTART")) {
           const cleanPart = trimmed.split(":").pop().trim();
           
-          // Vytažení textové podoby roku, měsíce a dne
           const yStr = cleanPart.substring(0, 4);
           const mStr = cleanPart.substring(4, 6);
           const dStr = cleanPart.substring(6, 8);
           
           if (trimmed.includes("VALUE=DATE") || cleanPart.length < 9) {
-            // Bezpečné vynucení lokálního data bez časového posunu serveru
+            // Bezpečné lokální datum pro celodenní události (jako je 29.9. sběr odpadu)
             currentEvent.start = new Date(`${yStr}-${mStr}-${dStr}T00:00:00`);
             currentEvent.isAllDay = true;
           } else {
@@ -84,13 +88,11 @@ export default async function handler(req, res) {
 
   events.sort((a, b) => a.start - b.start);
   
-  // OPRAVA FILTRU: Nastavení na dnešní půlnoc (00:00:00), aby se neztrácely celodenní události z dnešního dne
   const dnesPulnoc = new Date();
   dnesPulnoc.setHours(0, 0, 0, 0);
   
-  // Bezpečně vezmeme události od dnešní půlnoci dál
+  // Filtrujeme události od dnešní půlnoci, aby se zobrazilo přesně 5 nadcházejících událostí
   const budouciEvents = events.filter(ev => {
-    // Pro celodenní události porovnáváme čistě datum bez posunu času
     const evKopie = new Date(ev.start.getTime());
     evKopie.setHours(0, 0, 0, 0);
     return evKopie >= dnesPulnoc;
@@ -138,7 +140,6 @@ export default async function handler(req, res) {
       71: { ico: "❄️" }, 73: { ico: "❄️" }, 75: { ico: "❄️" }, 77: { ico: "❄️" }
     };
 
-    // OPRAVA: Sjednocení textových popisků dnů na kapitálky
     const dnyKratke = ["DNES", "ZÍTRA", "POZÍTŘÍ"];
     for (let i = 0; i < 3; i++) {
       const maxT = Math.round(weatherData.daily.temperature_2m_max[i]);
@@ -147,7 +148,6 @@ export default async function handler(req, res) {
       const wInfo = codes[code] || { ico: "☁️" };
       const denLabel = dnyKratke[i];
 
-      // Odebrán spodní textový popisek počasí, aby se rozvržení nerozbíjelo
       htmlWeather += `
         <div class="weather-day">
           <span style="font-weight:800; color:#a0a0ab; text-transform:uppercase; font-size:10px; letter-spacing:0.5px; margin-bottom:2px;">${denLabel}</span>
@@ -180,7 +180,11 @@ export default async function handler(req, res) {
         <div class="left-panel">
           <div style="font-size: 13px; font-weight: 800; color: #ef4444; letter-spacing: 2px; margin-bottom: 12px; text-transform: uppercase;">${jmenoDne}</div>
           <div style="font-size: 95px; font-weight: 900; color: #ffffff; line-height: 80px; margin-bottom: 0px;">${cisloDne}</div>
-          <div style="font-size: 20px; font-weight: 600; color: #a0a0ab; margin-bottom: 20px;">${jmenoMesice}</div>
+          <div style="font-size: 20px; font-weight: 600; color: #a0a0ab; margin-bottom: 10px;">${jmenoMesice}</div>
+          
+          <!-- PŘIDANÉ SRDÍČKO POD DATUMEM -->
+          <div style="font-size: 24px; margin-bottom: 15px; filter: drop-shadow(0 2px 4px rgba(239,68,68,0.2));">❤️</div>
+          
           <div style="background: #27272a; color: #a0a0ab; padding: 5px 10px; border-radius: 15px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;">AKTUALIZOVÁNO v ${casAktualizace}</div>
         </div>
         <div class="right-panel">
@@ -188,12 +192,3 @@ export default async function handler(req, res) {
             <div style="font-size: 11px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 8px;">RODINNÝ KALENDÁŘ</div>
             ${htmlEvents}
           </div>
-          <div class="weather-box">${htmlWeather}</div>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-
-  res.status(200).send(finalHtml);
-}
