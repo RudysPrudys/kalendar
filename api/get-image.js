@@ -57,21 +57,24 @@ export default async function handler(req, res) {
           currentEvent.summary = trimmed.replace("SUMMARY:", "").trim();
         } else if (trimmed.startsWith("DTSTART")) {
           const cleanPart = trimmed.split(":").pop().trim();
-          const year = parseInt(cleanPart.substring(0, 4));
-          const month = parseInt(cleanPart.substring(4, 6)) - 1;
-          const day = parseInt(cleanPart.substring(6, 8));
+          
+          // Vytažení textové podoby roku, měsíce a dne
+          const yStr = cleanPart.substring(0, 4);
+          const mStr = cleanPart.substring(4, 6);
+          const dStr = cleanPart.substring(6, 8);
           
           if (trimmed.includes("VALUE=DATE") || cleanPart.length < 9) {
-            currentEvent.start = new Date(year, month, day, 0, 0, 0);
+            // Bezpečné vynucení lokálního data bez časového posunu serveru
+            currentEvent.start = new Date(`${yStr}-${mStr}-${dStr}T00:00:00`);
             currentEvent.isAllDay = true;
           } else {
             const hour = parseInt(cleanPart.substring(9, 11)) || 0;
             const minute = parseInt(cleanPart.substring(11, 13)) || 0;
             
             if (cleanPart.endsWith("Z")) {
-              currentEvent.start = new Date(Date.UTC(year, month, day, hour, minute, 0));
+              currentEvent.start = new Date(Date.UTC(parseInt(yStr), parseInt(mStr) - 1, parseInt(dStr), hour, minute, 0));
             } else {
-              currentEvent.start = new Date(year, month, day, hour, minute, 0);
+              currentEvent.start = new Date(parseInt(yStr), parseInt(mStr) - 1, parseInt(dStr), hour, minute, 0);
             }
           }
         }
