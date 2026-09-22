@@ -2,9 +2,10 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
+  // VAŠE FINÁLNÍ UZAMČENÁ ADRESA
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
   
-  // API pro předpověď počasí pro lokalitu Černá Hora
+  // API pro předpověď počasí pro lokalitu Černá Hora, ČR
   const weatherUrl = "https://open-meteo.com";
 
   try {
@@ -24,7 +25,7 @@ export default async function handler(req, res) {
       console.error("Chyba načítání počasí:", e);
     }
 
-    // Parsování kalendáře
+    // 3. PARSOVÁNÍ KALENDÁŘE
     const events = [];
     const veventBlocks = text.split(/BEGIN:VEVENT/i);
     veventBlocks.shift(); 
@@ -35,7 +36,6 @@ export default async function handler(req, res) {
       const isAllDay = block.includes("VALUE=DATE");
 
       if (dtstartMatch && dtstartMatch[1]) {
-        // ROBUSTNÍ OPRAVA: Čistíme text přímo ze stringu v podskupině [1], ne z pole!
         const cleanStr = dtstartMatch[1].replace(/[\r\n]/g, "").trim();
         const year = parseInt(cleanStr.substring(0, 4));
         const month = parseInt(cleanStr.substring(4, 6)) - 1;
@@ -64,7 +64,7 @@ export default async function handler(req, res) {
 
     events.sort((a, b) => a.start - b.start);
 
-    // Uzamčení výpisu na MAX 4 UDÁLOSTI pro čistý design s počasím
+    // Limit na 4 události, aby zbyl prostor pro lištu počasí dole
     const dnes = new Date();
     dnes.setHours(0,0,0,0);
     const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 4);
@@ -72,7 +72,7 @@ export default async function handler(req, res) {
     const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
     const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
     
-    // Automatická detekce českého času
+    // Automatická detekce přesného českého času
     const aktualniDatum = new Date();
     const ceskyCasStr = aktualniDatum.toLocaleString("en-US", { timeZone: "Europe/Prague" });
     const ceskyCas = new Date(ceskyCasStr);
@@ -84,7 +84,7 @@ export default async function handler(req, res) {
 
     let htmlEvents = "";
     if (budouciEvents.length === 0) {
-      htmlEvents = `<div style="color:#86868b; text-align:center; padding:40px 0; font-size:18px;">Žádné nadcházející události</div>`;
+      htmlEvents = `<div style="color:#86868b; text-align:center; padding:50px 0; font-size:18px;">Žádné nadcházející události</div>`;
     } else {
       budouciEvents.forEach(ev => {
         const evDencislo = ev.start.getDate();
@@ -107,12 +107,12 @@ export default async function handler(req, res) {
       });
     }
 
-    // GENEROVÁNÍ BLOKU POČASÍ (Předpověď na 3 dny)
+    // 4. GENEROVÁNÍ BLOKU POČASÍ (Předpověď na 3 dny pro Černou Horu)
     let htmlWeather = "";
     if (weatherData && weatherData.daily) {
       const interpretWmoCode = (code) => {
         if (code === 0) return { txt: "Jasno", ico: "☀️" };
-        if (code <= 3) return { txt: "Polojasno", ico: "<table>⛅</table>" };
+        if (code <= 3) return { txt: "Polojasno", ico: "⛅" };
         if (code <= 48) return { txt: "Mlhavo", ico: "🌫️" };
         if (code <= 55) return { txt: "Mrholení", ico: "🌧️" };
         if (code <= 65) return { txt: "Déšť", ico: "🌧️" };
@@ -120,9 +120,9 @@ export default async function handler(req, res) {
         return { txt: "Bouřky", ico: "⛈️" };
       };
 
-      htmlWeather += `<div style="display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:12px; border-radius:12px; margin-top:auto;">`;
+      htmlWeather += `<div style="display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:10px; border-radius:12px; margin-top:10px;">`;
       
-      const denNázvy = ["Dnes", "Zítra", "Čtvrtek"]; 
+      const denNázvy = ["Dnes", "Zítra", "Pozítří"]; 
       for (let i = 0; i < 3; i++) {
         const maxT = Math.round(weatherData.daily.temperature_2m_max[i]);
         const minT = Math.round(weatherData.daily.temperature_2m_min[i]);
@@ -130,10 +130,10 @@ export default async function handler(req, res) {
 
         htmlWeather += `
           <div style="text-align:center; flex:1; border-right:${i < 2 ? '1px solid #27272a' : 'none'};">
-            <div style="font-size:11px; font-weight:800; color:#a0a0ab; text-transform:uppercase; margin-bottom:2px;">${denNázvy[i]}</div>
-            <div style="font-size:22px; margin-bottom:2px;">${wInfo.ico}</div>
-            <div style="font-size:13px; font-weight:700; color:#f5f5f7;">${maxT}° / <span style="color:#71717a; font-weight:500;">${minT}°</span></div>
-            <div style="font-size:10px; color:#86868b; margin-top:1px;">${wInfo.txt}</div>
+            <div style="font-size:10px; font-weight:800; color:#a0a0ab; text-transform:uppercase; margin-bottom:1px;">${denNázvy[i]}</div>
+            <div style="font-size:20px; margin-bottom:1px;">${wInfo.ico}</div>
+            <div style="font-size:12px; font-weight:700; color:#f5f5f7;">${maxT}° / <span style="color:#71717a; font-weight:500;">${minT}°</span></div>
+            <div style="font-size:9px; color:#86868b; margin-top:1px;">${wInfo.txt}</div>
           </div>
         `;
       }
@@ -150,7 +150,7 @@ export default async function handler(req, res) {
           html, body { margin: 0; padding: 0; background: #09090b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; width: 800px; height: 480px; }
           .dashboard { width: 800px; height: 480px; display: flex; background: #09090b; align-items: stretch; }
           .left-panel { width: 240px; height: 100%; background: #111113; border-right: 2px solid #27272a; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px 20px; text-align: center; }
-          .right-panel { width: 560px; height: 100%; padding: 25px 25px 20px 25px; display: flex; flex-direction: column; justify-content: space-between; }
+          .right-panel { width: 560px; height: 100%; padding: 25px 25px 15px 25px; display: flex; flex-direction: column; justify-content: space-between; }
         </style>
       </head>
       <body>
@@ -165,7 +165,7 @@ export default async function handler(req, res) {
           
           <!-- PRAVÝ SLOUPEC -->
           <div class="right-panel">
-            <div style="width:100%;">
+            <div style="width:100%; display:flex; flex-direction:column;">
               <div style="font-size: 13px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 15px;">RODINNÝ KALENDÁŘ</div>
               ${htmlEvents}
             </div>
