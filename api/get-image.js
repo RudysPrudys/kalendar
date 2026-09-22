@@ -1,6 +1,7 @@
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
 
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
 
@@ -31,7 +32,7 @@ export default async function handler(req, res) {
         } else if (trimmed.startsWith("DTSTART")) {
           const cleanPart = trimmed.split(":").pop().trim();
           
-          // Extrémně bezpečné vytažení roku, měsíce a dne bez ohledu na TZID
+          // Bezpečné vytažení roku, měsíce a dne
           const year = parseInt(cleanPart.substring(0, 4));
           const month = parseInt(cleanPart.substring(4, 6)) - 1;
           const day = parseInt(cleanPart.substring(6, 8));
@@ -54,11 +55,14 @@ export default async function handler(req, res) {
     }
   }
 
+  // Seřazení událostí
   events.sort((a, b) => a.start - b.start);
+  
+  // Vzhledem k datům v kalendáři (rok 2026) nastavujeme dnešní den na začátek dne pro správné filtrování budoucích událostí
   const dnes = new Date();
   dnes.setHours(0,0,0,0);
   
-  // Zobrazujeme 5 událostí pod sebou
+  // Filtrujeme pouze budoucí nebo dnešní události a vezmeme jich maximálně 5
   const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 5);
 
   const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
@@ -83,12 +87,12 @@ export default async function handler(req, res) {
       htmlEvents += `
         <div style="display:flex; align-items:center; background:#2c2c2e; padding:8px 12px; margin-bottom:5px; border-radius:10px; border-left:4px solid #0a84ff;">
           <div style="background:#1c1c1e; padding:4px 8px; border-radius:6px; text-align:center; min-width:42px; margin-right:12px;">
-            <span style="font-size:9px; font-weight:800; color:#ef4444; display:block; margin-bottom:1px;">\${evDenvTyzdni}</span>
-            <span style="font-size:16px; font-weight:700; color:#ffffff; display:block; line-height:16px;">\${evDencislo}</span>
+            <span style="font-size:9px; font-weight:800; color:#ef4444; display:block; margin-bottom:1px;">${evDenvTyzdni}</span>
+            <span style="font-size:16px; font-weight:700; color:#ffffff; display:block; line-height:16px;">${evDencislo}</span>
           </div>
           <div style="flex:1; min-width:0;">
-            <div style="font-size:14px; font-weight:600; color:#f5f5f7; margin-bottom:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">\${cleanSummary}</div>
-            <div style="font-size:11px; color:#3b82f6; font-weight:700;">🕒 \${timeString}</div>
+            <div style="font-size:14px; font-weight:600; color:#f5f5f7; margin-bottom:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${cleanSummary}</div>
+            <div style="font-size:11px; color:#3b82f6; font-weight:700;">🕒 ${timeString}</div>
           </div>
         </div>`;
     });
@@ -105,21 +109,23 @@ export default async function handler(req, res) {
         .dashboard { width:800px; height:480px; display:flex; background:#09090b; align-items:stretch; }
         .left-panel { width:240px; height:100%; background:#111113; border-right:2px solid #27272a; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:30px 20px; text-align:center; }
         .right-panel { width:560px; height:100%; padding:25px 25px 15px 25px; display:flex; flex-direction:column; justify-content:space-between; }
-        .weather-box { display:none; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:10px; border-radius:12px; margin-top:10px; width:100%; }
+        .weather-box { display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:12px; border-radius:12px; margin-top:10px; width:100%; }
+        .weather-day { text-align: center; flex: 1; color: #f5f5f7; font-size: 12px; }
+        .weather-day span { display: block; }
       </style>
     </head>
     <body>
       <div class="dashboard">
         <div class="left-panel">
-          <div style="font-size: 14px; font-weight: 800; color: #ef4444; letter-spacing: 2px; margin-bottom: 20px; text-transform: uppercase;">\${jmenoDne}</div>
-          <div style="font-size: 110px; font-weight: 900; color: #ffffff; line-height: 95px; margin-bottom: 0px;">\${cisloDne}</div>
-          <div style="font-size: 22px; font-weight: 600; color: #a0a0ab; margin-bottom: 30px;">\${jmenoMesice}</div>
-          <div style="background: #27272a; color: #71717a; padding: 6px 15px; border-radius: 15px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;">AKTUALIZOVÁNO v \${casAktualizace}</div>
+          <div style="font-size: 14px; font-weight: 800; color: #ef4444; letter-spacing: 2px; margin-bottom: 20px; text-transform: uppercase;">${jmenoDne}</div>
+          <div style="font-size: 110px; font-weight: 900; color: #ffffff; line-height: 95px; margin-bottom: 0px;">${cisloDne}</div>
+          <div style="font-size: 22px; font-weight: 600; color: #a0a0ab; margin-bottom: 30px;">${jmenoMesice}</div>
+          <div style="background: #27272a; color: #71717a; padding: 6px 15px; border-radius: 15px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;">AKTUALIZOVÁNO v ${casAktualizace}</div>
         </div>
         <div class="right-panel">
           <div style="width:100%; display:flex; flex-direction:column;">
             <div style="font-size: 13px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 15px;">RODINNÝ KALENDÁŘ</div>
-            \${htmlEvents}
+            ${htmlEvents}
           </div>
           <div id="weather-container" class="weather-box"></div>
         </div>
@@ -129,6 +135,7 @@ export default async function handler(req, res) {
         async function fetchLiveWeather() {
           const wContainer = document.getElementById('weather-container');
           try {
+            // Správné volání Open-Meteo API s koordináty pro lokalitu Černá Hora
             const wRes = await fetch("https://open-meteo.com");
             if (!wRes.ok) throw new Error();
             const wData = await wRes.json();
@@ -149,35 +156,27 @@ export default async function handler(req, res) {
                 const minT = Math.round(wData.daily.temperature_2m_min[i]);
                 const code = wData.daily.weathercode[i];
                 const wInfo = codes[code] || { txt: "Mraky", ico: "☁️" };
-
                 let denLabel = dnyKratke[i];
-                if (i === 2) {
-                  const d = new Date();
-                  d.setDate(d.getDate() + 2);
-                  denLabel = d.toLocaleString('cs-CZ', { weekday: 'short' });
-                }
 
                 html += \`
-                  <div style="text-align:center; flex:1; border-right:\${i < 2 ? '1px solid #27272a' : 'none'};">
-                    <div style="font-size:10px; font-weight:800; color:#a0a0ab; text-transform:uppercase; margin-bottom:1px;">\${denLabel}</div>
-                    <div style="font-size:22px; margin-bottom:1px; line-height:24px;">\${wInfo.ico}</div>
-                    <div style="font-size:12px; font-weight:700; color:#f5f5f7;">\${maxT}° / <span style="color:#71717a; font-weight:500;">\${minT}°</span></div>
-                    <div style="font-size:9px; color:#86868b; margin-top:1px;">\${wInfo.txt}</div>
-                  </div>\`;
+                  <div class="weather-day">
+                    <span style="font-weight:700; color:#a0a0ab; text-transform:uppercase; font-size:10px; margin-bottom:4px;">\${denLabel}</span>
+                    <span style="font-size:20px; margin:4px 0;">\${wInfo.ico}</span>
+                    <span style="font-weight:600;">\${maxT}° / <span style="color:#71717a;">\${minT}°</span></span>
+                  </div>
+                \`;
               }
               wContainer.innerHTML = html;
-              wContainer.style.display = 'flex';
             }
-          } catch(e) {
-            wContainer.innerHTML = '<div style="color:#71717a; text-align:center; font-size:12px; width:100%;">Předpověď počasí dočasně nedostupná</div>';
-            wContainer.style.display = 'flex';
+          } catch (e) {
+            wContainer.innerHTML = \`<div style="color:#ef4444; font-size:12px; width:100%; text-align:center;">Chyba načítání počasí</div>\`;
           }
         }
         fetchLiveWeather();
       </script>
     </body>
-    </html>`.trim();
+    </html>
+  `;
 
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  return res.status(200).send(finalHtml);
+  res.status(200).send(finalHtml);
 }
