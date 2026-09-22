@@ -2,25 +2,19 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
-  // TVŮJ UNIKÁTNÍ ODKAZ JE ZDE NAPEWNO UZAMČENÝ
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
-  const weatherUrl = "https://open-meteo.com";
 
   let icalRawText = "";
-  let weatherData = null;
 
+  // 1. STAŽENÍ KALENDÁŘE (Rychlé a izolované)
   try {
-    const [icloudResponse, weatherResponse] = await Promise.all([
-      fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }),
-      fetch(weatherUrl, { headers: { 'User-Agent': 'ElecrowPanel/1.0' } })
-    ]);
-
-    if (icloudResponse.ok) icalRawText = await icloudResponse.text();
-    if (weatherResponse.ok) weatherData = await weatherResponse.json();
+    const response = await fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (response.ok) icalRawText = await response.text();
   } catch (e) {
-    console.error("Network error");
+    console.error("iCloud sync error");
   }
 
+  // 2. PARSOVÁNÍ KALENDÁŘE ŘÁDEK PO ŘÁDKU
   const events = [];
   if (icalRawText) {
     const lines = icalRawText.split(/\r?\n/);
@@ -62,10 +56,11 @@ export default async function handler(req, res) {
   events.sort((a, b) => a.start - b.start);
   const dnes = new Date();
   dnes.setHours(0,0,0,0);
-  const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 4);
+  
+  // VYŠPERKOVÁNÍ: Rozšířeno na 5 UDÁLOSTÍ, které se nyní perfektně vejdou na plochu
+  const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 5);
 
   const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
-  const dnyKratke = ["Dnes", "Zítra", "Pozítří"];
   const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
   
   const ceskyCas = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }));
@@ -74,6 +69,7 @@ export default async function handler(req, res) {
   const jmenoMesice = mesice[ceskyCas.getMonth()];
   const casAktualizace = ceskyCas.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
+  // SESTAVENÍ HTML PRO KALENDÁŘ
   let htmlEvents = "";
   if (budouciEvents.length === 0) {
     htmlEvents = `<div style="color:#86868b; text-align:center; padding:50px 0; font-size:14px; font-weight:500;">Žádné nadcházející události</div>`;
@@ -98,54 +94,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const codes = {
-    0: { txt: "Jasno", ico: "☀️" }, 1: { txt: "Polojasno", ico: "⛅" }, 2: { txt: "Polojasno", ico: "⛅" }, 3: { txt: "Polojasno", ico: "⛅" },
-    45: { txt: "Mlha", ico: "🌫️" }, 48: { txt: "Mlha", ico: "🌫️" }, 51: { txt: "Mrholení", ico: "🌧️" }, 53: { txt: "Mrholení", ico: "🌧️" },
-    55: { txt: "Mrholení", ico: "🌧️" }, 61: { txt: "Déšť", ico: "🌧️" }, 63: { txt: "Déšť", ico: "🌧️" }, 65: { txt: "Déšť", ico: "🌧️" },
-    71: { txt: "Sněžení", ico: "❄️" }, 73: { txt: "Sněžení", ico: "❄️" }, 75: { txt: "Sněžení", ico: "❄️" }, 77: { txt: "Sněžení", ico: "❄️" }
-  };
-
-  let finalDailyWeather = null;
-  let jeZaloha = false;
-
-  // OPRAVENO: Kontrola přesného názvu weather_code z Open-Meteo
-  if (weatherData && weatherData.daily && weatherData.daily.weather_code) {
-    finalDailyWeather = weatherData.daily;
-  } else {
-    jeZaloha = true;
-    finalDailyWeather = {
-      temperature_2m_max:,
-      temperature_2m_min:,
-      weather_code: [1, 2, 3]
-    };
-  }
-
-  let htmlWeather = `<div style="display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:10px; border-radius:12px; margin-top:10px; width:100%;">`;
-  for (let i = 0; i < 3; i++) {
-    const maxT = Math.round(finalDailyWeather.temperature_2m_max[i]);
-    const minT = Math.round(finalDailyWeather.temperature_2m_min[i]);
-    const code = finalDailyWeather.weather_code[i];
-    const wInfo = codes[code] || { txt: "Mraky", ico: "☁️" };
-
-    let denLabel = dnyKratke[i];
-    if (i === 2) {
-      const budiciDen = new Date(ceskyCas);
-      budiciDen.setDate(budiciDen.getDate() + 2);
-      denLabel = budiciDen.toLocaleString('cs-CZ', { weekday: 'short' });
-    }
-
-    const zobrazenyText = jeZaloha ? "ZÁLOHA" : wInfo.txt;
-
-    htmlWeather += `
-      <div style="text-align:center; flex:1; border-right:${i < 2 ? '1px solid #27272a' : 'none'};">
-        <div style="font-size:10px; font-weight:800; color:#a0a0ab; text-transform:uppercase; margin-bottom:1px;">${denLabel}</div>
-        <div style="font-size:22px; margin-bottom:1px; line-height:24px;">${wInfo.ico}</div>
-        <div style="font-size:12px; font-weight:700; color:#f5f5f7;">${maxT}° / <span style="color:#71717a; font-weight:500;">${minT}°</span></div>
-        <div style="font-size:9px; color:#86868b; margin-top:1px;">${zobrazenyText}</div>
-      </div>`;
-  }
-  htmlWeather += `</div>`;
-
+  // FINÁLNÍ ŠABLONA (Počasí se stahuje přímo v mobilu/displeji bleskově přes klientský skript)
   const finalHtml = `
     <!DOCTYPE html>
     <html>
@@ -157,6 +106,7 @@ export default async function handler(req, res) {
         .dashboard { width:800px; height:480px; display:flex; background:#09090b; align-items:stretch; }
         .left-panel { width:240px; height:100%; background:#111113; border-right:2px solid #27272a; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:30px 20px; text-align:center; }
         .right-panel { width:560px; height:100%; padding:25px 25px 15px 25px; display:flex; flex-direction:column; justify-content:space-between; }
+        .weather-box { display:none; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:10px; border-radius:12px; margin-top:10px; width:100%; }
       </style>
     </head>
     <body>
@@ -172,12 +122,63 @@ export default async function handler(req, res) {
             <div style="font-size: 13px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 15px;">RODINNÝ KALENDÁŘ</div>
             ${htmlEvents}
           </div>
-          ${htmlWeather}
+          
+          <!-- Klientský kontejner na živé počasí -->
+          <div id="weather-container" class="weather-box"></div>
         </div>
       </div>
+
+      <script>
+        // Živý klientský skript, který si počasí vytáhne přímo v zařízení operativně
+        async function fetchLiveWeather() {
+          const wContainer = document.getElementById('weather-container');
+          try {
+            const wRes = await fetch("https://open-meteo.com");
+            if (!wRes.ok) throw new Error();
+            const wData = await wRes.json();
+            
+            if (wData && wData.daily) {
+              const codes = {
+                0: { txt: "Jasno", ico: "☀️" }, 1: { txt: "Polojasno", ico: "⛅" }, 2: { txt: "Polojasno", ico: "⛅" }, 3: { txt: "Polojasno", ico: "⛅" },
+                45: { txt: "Mlha", ico: "🌫️" }, 48: { txt: "Mlha", ico: "🌫️" }, 51: { txt: "Mrholení", ico: "🌧️" }, 53: { txt: "Mrholení", ico: "🌧️" },
+                55: { txt: "Mrholení", ico: "🌧️" }, 61: { txt: "Déšť", ico: "🌧️" }, 63: { txt: "Déšť", ico: "🌧️" }, 65: { txt: "Déšť", ico: "🌧️" },
+                71: { txt: "Sněžení", ico: "❄️" }, 73: { txt: "Sněžení", ico: "❄️" }, 75: { txt: "Sněžení", ico: "❄️" }, 77: { txt: "Sněžení", ico: "❄️" }
+              };
+
+              const dnyKratke = ["Dnes", "Zítra", "Pozítří"];
+              let html = "";
+
+              for (let i = 0; i < 3; i++) {
+                const maxT = Math.round(wData.daily.temperature_2m_max[i]);
+                const minT = Math.round(wData.daily.temperature_2m_min[i]);
+                const code = wData.daily.weathercode[i];
+                const wInfo = codes[code] || { txt: "Mraky", ico: "☁️" };
+
+                let denLabel = dnyKratke[i];
+                if (i === 2) {
+                  const d = new Date();
+                  d.setDate(d.getDate() + 2);
+                  denLabel = d.toLocaleString('cs-CZ', { weekday: 'short' });
+                }
+
+                html += \`
+                  <div style="text-align:center; flex:1; border-right:\${i < 2 ? '1px solid #27272a' : 'none'};">
+                    <div style="font-size:10px; font-weight:800; color:#a0a0ab; text-transform:uppercase; margin-bottom:1px;">\${denLabel}</div>
+                    <div style="font-size:22px; margin-bottom:1px; line-height:24px;">\${wInfo.ico}</div>
+                    <div style="font-size:12px; font-weight:700; color:#f5f5f7;">\${maxT}° / <span style="color:#71717a; font-weight:500;">\${minT}°</span></div>
+                    <div style="font-size:9px; color:#86868b; margin-top:1px;">\${wInfo.txt}</div>
+                  </div>\`;
+              }
+              wContainer.innerHTML = html;
+              wContainer.style.display = 'flex';
+            }
+          } catch(e) {
+            wContainer.innerHTML = '<div style="color:#71717a; text-align:center; font-size:12px; width:100%;">Předpověď počasí nedostupná</div>';
+            wContainer.style.display = 'flex';
+          }
+        }
+        fetchLiveWeather();
+      </script>
     </body>
     </html>`.trim();
 
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  return res.status(200).send(finalHtml);
-}
