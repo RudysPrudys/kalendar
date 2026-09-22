@@ -1,6 +1,5 @@
 import https from 'https';
 
-// Pomocná funkce pro bezpečné stahování dat na jakékoliv verzi Node.js na Vercelu
 function serverFetch(url, options = {}) {
   return new Promise((resolve, reject) => {
     const headers = options.headers || {};
@@ -29,7 +28,6 @@ export default async function handler(req, res) {
   let icalRawText = "";
   let weatherData = null;
 
-  // 1. Paralelní stahování dat bez závislosti na globálním fetchi
   try {
     const [icalRes, weatherRes] = await Promise.all([
       serverFetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }),
@@ -42,7 +40,6 @@ export default async function handler(req, res) {
     console.error("Chyba při stahování dat:", e);
   }
 
-  // 2. Parser iCal kalendáře
   const events = [];
   if (icalRawText) {
     const lines = icalRawText.split(/\r?\n/);
@@ -82,13 +79,20 @@ export default async function handler(req, res) {
     }
   }
 
-  // Řazení a filtrace událostí
   events.sort((a, b) => a.start - b.start);
-  const dnes = new Date();
-  dnes.setHours(0,0,0,0);
-  const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 5);
+  
+  // OPRAVA FILTRU: Nastavení na dnešní půlnoc (00:00:00), aby se neztrácely celodenní události z dnešního dne
+  const dnesPulnoc = new Date();
+  dnesPulnoc.setHours(0, 0, 0, 0);
+  
+  // Bezpečně vezmeme události od dnešní půlnoci dál
+  const budouciEvents = events.filter(ev => {
+    // Pro celodenní události porovnáváme čistě datum bez posunu času
+    const evKopie = new Date(ev.start.getTime());
+    evKopie.setHours(0, 0, 0, 0);
+    return evKopie >= dnesPulnoc;
+  }).slice(0, 5);
 
-  // 3. Český čas a datum
   const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
   const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
   
@@ -98,7 +102,6 @@ export default async function handler(req, res) {
   const jmenoMesice = mesice[ceskyCas.getMonth()];
   const casAktualizace = ceskyCas.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
-  // 4. HTML pro Kalendář (Kompaktní layout pro 5 událostí bez ořezu)
   let htmlEvents = "";
   if (budouciEvents.length === 0) {
     htmlEvents = `<div style="color:#86868b; text-align:center; padding:50px 0; font-size:15px; font-weight:500;">Žádné nadcházející události</div>`;
@@ -123,36 +126,36 @@ export default async function handler(req, res) {
     });
   }
 
-  // 5. HTML pro živé Počasí z Open-Meteo
   let htmlWeather = "";
   if (weatherData && weatherData.daily) {
     const codes = {
-      0: { txt: "Jasno", ico: "☀️" }, 1: { txt: "Polojasno", ico: "⛅" }, 2: { txt: "Polojasno", ico: "⛅" }, 3: { txt: "Polojasno", ico: "⛅" },
-      45: { txt: "Mlha", ico: "🌫️" }, 48: { txt: "Mlha", ico: "🌫️" }, 51: { txt: "Mrholení", ico: "🌧️" }, 53: { txt: "Mrholení", ico: "🌧️" },
-      55: { txt: "Mrholení", ico: "🌧️" }, 61: { txt: "Déšť", ico: "🌧️" }, 63: { txt: "Déšť", ico: "🌧️" }, 65: { txt: "Déšť", ico: "🌧️" },
-      71: { txt: "Sněžení", ico: "❄️" }, 73: { txt: "Sněžení", ico: "❄️" }, 75: { txt: "Sněžení", ico: "❄️" }, 77: { txt: "Sněžení", ico: "❄️" }
+      0: { ico: "☀️" }, 1: { ico: "⛅" }, 2: { ico: "⛅" }, 3: { ico: "⛅" },
+      45: { ico: "🌫️" }, 48: { ico: "🌫️" }, 51: { ico: "🌧️" }, 53: { ico: "🌧️" },
+      55: { ico: "🌧️" }, 61: { ico: "🌧️" }, 63: { ico: "🌧️" }, 65: { ico: "🌧️" },
+      71: { ico: "❄️" }, 73: { ico: "❄️" }, 75: { ico: "❄️" }, 77: { ico: "❄️" }
     };
 
-    const dnyKratke = ["Dnes", "Zítra", "Pozítří"];
+    // OPRAVA: Sjednocení textových popisků dnů na kapitálky
+    const dnyKratke = ["DNES", "ZÍTRA", "POZÍTŘÍ"];
     for (let i = 0; i < 3; i++) {
       const maxT = Math.round(weatherData.daily.temperature_2m_max[i]);
       const minT = Math.round(weatherData.daily.temperature_2m_min[i]);
       const code = weatherData.daily.weathercode[i];
-      const wInfo = codes[code] || { txt: "Mraky", ico: "☁️" };
+      const wInfo = codes[code] || { ico: "☁️" };
       const denLabel = dnyKratke[i];
 
+      // Odebrán spodní textový popisek počasí, aby se rozvržení nerozbíjelo
       htmlWeather += `
         <div class="weather-day">
-          <span style="font-weight:700; color:#a0a0ab; text-transform:uppercase; font-size:10px; margin-bottom:2px;">${denLabel}</span>
-          <span style="font-size:24px; margin:2px 0; display:block;">${wInfo.ico}</span>
-          <span style="font-weight:600; font-size:13px;">${maxT}° / <span style="color:#71717a;">${minT}°</span></span>
+          <span style="font-weight:800; color:#a0a0ab; text-transform:uppercase; font-size:10px; letter-spacing:0.5px; margin-bottom:2px;">${denLabel}</span>
+          <span style="font-size:26px; margin:2px 0; display:block;">${wInfo.ico}</span>
+          <span style="font-weight:600; font-size:13px; color:#ffffff;">${maxT}° / <span style="color:#71717a;">${minT}°</span></span>
         </div>`;
     }
   } else {
-    htmlWeather = `<div style="color:#ef4444; font-size:13px; width:100%; text-align:center; padding:10px 0; font-weight:600;">⚠️ Data o počasí nebyla přijata</div>`;
+    htmlWeather = `<div style="color:#ef4444; font-size:12px; width:100%; text-align:center; padding:10px 0;">⚠️ Problém s daty počasí</div>`;
   }
 
-  // 6. Finální šablona (Upravené výšky a mezery pro ESP32 800x480)
   const finalHtml = `
     <!DOCTYPE html>
     <html>
@@ -164,7 +167,7 @@ export default async function handler(req, res) {
         .dashboard { width:800px; height:480px; display:flex; background:#09090b; align-items:stretch; }
         .left-panel { width:220px; height:100%; background:#111113; border-right:2px solid #27272a; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:15px; text-align:center; }
         .right-panel { width:580px; height:100%; padding:15px 20px 12px 20px; display:flex; flex-direction:column; justify-content:space-between; }
-        .weather-box { display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:10px 6px; border-radius:12px; width:100%; }
+        .weather-box { display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:10px 6px; border-radius:12px; width:100%; height:76px; align-items:center; }
         .weather-day { text-align: center; flex: 1; color: #f5f5f7; }
         .weather-day span { display: block; }
       </style>
