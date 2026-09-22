@@ -18,7 +18,9 @@ export default async function handler(req, res) {
 
   // 2. STAŽENÍ DATA POČASÍ
   try {
-    const wResponse = await fetch(weatherUrl);
+    const wResponse = await fetch(weatherUrl, {
+      headers: { 'User-Agent': 'Elecrow-7-Display-Dashboard/1.0' }
+    });
     if (wResponse.ok) weatherData = await wResponse.json();
   } catch (e) {
     console.error("Počasí error:", e);
