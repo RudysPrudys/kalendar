@@ -34,7 +34,7 @@ export default async function handler(req, res) {
       const dtstartMatch = block.match(/DTSTART(?:\s*;.*?)?:(.*)/i);
       const isAllDay = block.includes("VALUE=DATE");
 
-      // ZASTRÁŽENO S INDEXEM [1]
+      // HLAVNÍ OPRAVA: Kontrola a použití indexu [1] pro získání čistého textu z regulárního výrazu
       if (dtstartMatch && dtstartMatch[1]) {
         const cleanStr = dtstartMatch[1].replace(/[\r\n]/g, "").trim();
         const year = parseInt(cleanStr.substring(0, 4));
@@ -129,7 +129,7 @@ export default async function handler(req, res) {
         let denLabel = dnyKratke[i];
         if (i === 2) {
           const budiciDen = new Date(ceskyCas);
-          budiciDen.setDate(budiciDen.getDate() + 2);
+          budiciDen.setDate(budiciDen.getDay() + 2);
           denLabel = budiciDen.toLocaleString('cs-CZ', { weekday: 'short' });
         }
 
