@@ -2,9 +2,9 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
-  const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
+  const icloudUrl = "https://icloud.com";
   
-  // Správná, plná API adresa pro předpověď počasí v Černé Hoře
+  // Přesné GPS souřadnice pro lokalitu Černá Hora, ČR
   const weatherUrl = "https://open-meteo.com";
 
   try {
@@ -13,10 +13,12 @@ export default async function handler(req, res) {
     if (!response.ok) throw new Error("Chyba iCloudu");
     const text = await response.text();
 
-    // 2. STAŽENÍ POČASÍ
+    // 2. STAŽENÍ POČASÍ (S OPRAVENOU USER-AGENT HLAVIČKOU)
     let weatherData = null;
     try {
-      const wResponse = await fetch(weatherUrl);
+      const wResponse = await fetch(weatherUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (ESP32-S3-Dashboard)' }
+      });
       if (wResponse.ok) {
         weatherData = await wResponse.json();
       }
@@ -63,7 +65,7 @@ export default async function handler(req, res) {
 
     events.sort((a, b) => a.start - b.start);
 
-    // Limit na 4 události pro udržení ideální výšky panelu
+    // Limit na 4 události pro udržení prostoru pro počasí
     const dnes = new Date();
     dnes.setHours(0,0,0,0);
     const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 4);
@@ -107,12 +109,12 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. OPRAVENÉ GENEROVÁNÍ BLOKU POČASÍ
+    // 4. GENEROVÁNÍ BLOKU POČASÍ
     let htmlWeather = "";
     if (weatherData && weatherData.daily) {
       const interpretWmoCode = (code) => {
         if (code === 0) return { txt: "Jasno", ico: "☀️" };
-        if (code <= 3) return { txt: "Polojasno", ico: "⛅" }; // OPRAVA: Čistá textová ikona bez rozbité HTML tabulky
+        if (code <= 3) return { txt: "Polojasno", ico: "⛅" }; 
         if (code <= 48) return { txt: "Mlhavo", ico: "🌫️" };
         if (code <= 55) return { txt: "Mrholení", ico: "🌧️" };
         if (code <= 65) return { txt: "Déšť", ico: "🌧️" };
@@ -120,14 +122,13 @@ export default async function handler(req, res) {
         return { txt: "Bouřky", ico: "⛈️" };
       };
 
-      htmlWeather += `<div style="display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:10px; border-radius:12px; margin-top:10px;">`;
+      htmlWeather += `<div style="display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:10px; border-radius:12px; margin-top:10px; width:100%;">`;
       
       for (let i = 0; i < 3; i++) {
         const maxT = Math.round(weatherData.daily.temperature_2m_max[i]);
         const minT = Math.round(weatherData.daily.temperature_2m_min[i]);
         const wInfo = interpretWmoCode(weatherData.daily.weathercode[i]);
 
-        // Dynamický výpočet správného jména dne (Dnes, Zítra, nebo název dne v týdnu pro pozítří)
         let denLabel = dnyKratke[i];
         if (i === 2) {
           const budiciDen = new Date(ceskyCas);
