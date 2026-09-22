@@ -40,22 +40,19 @@ export default async function handler(req, res) {
         }
 
         events.push({
-          summary: summaryMatch && summaryMatch[1] ? summaryMatch[1].replace(/[\r\n]/g, "").trim() : "Bez nazvu",
+          summary: summaryMatch && summaryMatch[1] ? summaryMatch[1].replace(/[\r\n]/g, "").trim() : "Bez názvu",
           start: startDate,
           isAllDay: isAllDay
         });
       }
     }
 
-    // Řazení událostí chronologicky
     events.sort((a, b) => a.start - b.start);
 
-    // Filtrovat pouze dnešní a budoucí události
     const dnes = new Date();
     dnes.setHours(0,0,0,0);
-    const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 5); // Max 5 událostí pro čistý design
+    const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 5);
 
-    // Generování informací pro LEVÝ HODINOVÝ SLOUPEC
     const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
     const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
     
@@ -65,92 +62,72 @@ export default async function handler(req, res) {
     const jmenoMesice = mesice[aktualniDatum.getMonth()];
     const casAktualizace = aktualniDatum.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
-    // Generování PRAVÉHO SLOUPCE s událostmi
-    let svgEventsHtml = "";
-    let yOffset = 40; // Výchozí pozice první události v pravém sloupci
+    let htmlEvents = "";
     
     if (budouciEvents.length === 0) {
-      svgEventsHtml = `
-        <text x="530" y="240" fill="#a0a0ab" font-size="22" font-family="-apple-system, sans-serif" font-weight="500" text-anchor="middle">
-          Žádné nadcházející události
-        </text>`;
+      htmlEvents = `<div style="color:#86868b; text-align:center; margin-top:100px; font-size:22px;">Žádné nadcházející události</div>`;
     } else {
-      budouciEvents.forEach((ev, index) => {
+      budouciEvents.forEach(ev => {
         const evDencislo = ev.start.getDate();
-        const evMesiccislo = ev.start.getMonth() + 1;
         const evDenvTyzdni = ev.start.toLocaleString('cs-CZ', { weekday: 'short' }).toUpperCase();
-        
-        const dateStr = `${evDencislo}. ${evMesiccislo}.`;
-        const timeStr = ev.isAllDay ? "Celý den" : ev.start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
-        
-        // Vyčištění textu události od paznaků a diakritiky (pro jistotu kvůli ESP32)
-        const cleanSummary = ev.summary
-          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const timeString = ev.isAllDay ? "Celý den" : ev.start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
-        svgEventsHtml += `
-          <!-- Řádek události č. ${index + 1} -->
-          <g transform="translate(280, ${yOffset})">
-            <!-- Datumový čtverec / odznak -->
-            <rect width="65" height="55" rx="10" fill="#27272a"/>
-            <text x="32.5" y="23" fill="#ef4444" font-size="12" font-weight="800" font-family="-apple-system, sans-serif" text-anchor="middle">${evDenvTyzdni}</text>
-            <text x="32.5" y="45" fill="#ffffff" font-size="20" font-weight="700" font-family="-apple-system, sans-serif" text-anchor="middle">${evDencislo}</text>
-            
-            <!-- Čas události -->
-            <text x="85" y="34" fill="#3b82f6" font-size="16" font-weight="700" font-family="-apple-system, sans-serif">🕒 ${timeStr}</text>
-            
-            <!-- Hlavní text události -->
-            <text x="230" y="34" fill="#f4f4f5" font-size="20" font-weight="600" font-family="-apple-system, sans-serif">${cleanSummary}</text>
-            
-            <!-- Dělící linka (vynecháme u poslední události) -->
-            ${index < budouciEvents.length - 1 ? `<line x1="0" y1="72" x2="480" y2="72" stroke="#27272a" stroke-width="1"/>` : ''}
-          </g>
+        htmlEvents += `
+          <div style="display:flex; align-items:center; background:#2c2c2e; padding:15px; margin-bottom:12px; border-radius:12px; border-left:4px solid #0a84ff;">
+            <div style="background:#1c1c1e; padding:6px 12px; border-radius:8px; text-align:center; min-width:45px; margin-right:15px;">
+              <span style="font-size:11px; font-weight:800; color:#ef4444; display:block; margin-bottom:2px;">${evDenvTyzdni}</span>
+              <span style="font-size:20px; font-weight:700; color:#ffffff; display:block; line-height:20px;">${evDencislo}</span>
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:19px; font-weight:600; color:#f5f5f7; margin-bottom:4px;">${ev.summary}</div>
+              <div style="font-size:14px; color:#3b82f6; font-weight:700;">🕒 ${timeString}</div>
+            </div>
+          </div>
         `;
-        yOffset += 85; // Mezera mezi řádky
       });
     }
 
-    // FINÁLNÍ SESTAVENÍ SVG VE VELIKOSTI DISPLEJE (800x480)
-    const svg = `
-      <svg xmlns="http://w3.org" width="800" height="480" viewBox="0 0 800 480">
-        <!-- Celkové tmavé břidlicové pozadí -->
-        <rect width="800" height="480" fill="#09090b"/>
-        
-        <!-- ================= LEVÝ SLOUPEC (PANELEK DNES) ================= -->
-        <g transform="translate(0, 0)">
-          <!-- Pozadí levého panelu -->
-          <rect width="250" height="480" fill="#18181b"/>
-          <!-- Vertikální předěl -->
-          <line x1="250" y1="0" x2="250" y2="480" stroke="#27272a" stroke-width="2"/>
+    // Vygenerujeme čisté HTML s pevnou velikostí 800x480 pixelů pro 7" Elecrow displej
+    const finalHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          * { box-sizing: border-box; }
+          body { margin:0; padding:0; background:#09090b; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow:hidden; }
+          .dashboard { width:800px; height:480px; display:flex; background:#09090b; }
+          .left-panel { width:250px; height:480px; background:#18181b; border-right:2px solid #27272a; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; text-align:center; }
+          .right-panel { width:550px; height:480px; padding:30px 25px; display:flex; flex-direction:column; }
+        </style>
+      </head>
+      <body>
+        <div class="dashboard">
+          <!-- LEVÝ SLOUPEC -->
+          <div class="left-panel">
+            <div style="font-size:18px; font-weight:800; color:#ef4444; letter-spacing:2px; margin-bottom:20px;">${jmenoDne}</div>
+            <div style="font-size:110px; font-weight:900; color:#ffffff; line-height:100px; margin-bottom:10px;">${cisloDne}</div>
+            <div style="font-size:22px; font-weight:600; color:#a0a0ab; margin-bottom:40px;">${jmenoMesice}</div>
+            <div style="background:#27272a; color:#71717a; padding:6px 15px; border-radius:15px; font-size:11px; font-weight:700; letter-spacing:0.5px;">AKTUALIZOVÁNO v ${casAktualizace}</div>
+          </div>
           
-          <!-- Jméno dne (např. ÚTERÝ) -->
-          <text x="125" y="110" fill="#ef4444" font-size="18" font-weight="800" font-family="-apple-system, sans-serif" letter-spacing="2" text-anchor="middle">${jmenoDne}</text>
-          
-          <!-- Velké číslo dne -->
-          <text x="125" y="240" fill="#ffffff" font-size="110" font-weight="900" font-family="-apple-system, sans-serif" text-anchor="middle">${cisloDne}</text>
-          
-          <!-- Název měsíce -->
-          <text x="125" y="290" fill="#a0a0ab" font-size="22" font-weight="600" font-family="-apple-system, sans-serif" text-anchor="middle">${jmenoMesice}</text>
-          
-          <!-- Malý popisek dole o aktualizaci panýlku -->
-          <rect x="35" y="415" width="180" height="30" rx="15" fill="#27272a"/>
-          <text x="125" y="434" fill="#71717a" font-size="12" font-weight="700" font-family="-apple-system, sans-serif" text-anchor="middle">AKTUALIZOVÁNO v ${casAktualizace}</text>
-        </g>
-        
-        <!-- ================= PRAVÝ SLOUPEC (UDÁLOSTI) ================= -->
-        <!-- Velký elegantní nadpis kalendáře navrchu -->
-        <text x="280" y="40" fill="#a0a0ab" font-size="14" font-weight="800" font-family="-apple-system, sans-serif" letter-spacing="1.5">RODINNÝ KALENDÁŘ</text>
-        
-        <g transform="translate(0, 25)">
-            ${svgEventsHtml}
-        </g>
-      </svg>
+          <!-- PRAVÝ SLOUPEC -->
+          <div class="right-panel">
+            <div style="font-size:14px; font-weight:800; color:#a0a0ab; letter-spacing:1.5px; margin-bottom:20px;">RODINNÝ KALENDÁŘ</div>
+            <div style="flex:1;">
+              ${htmlEvents}
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
     `.trim();
 
-    res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
-    return res.status(200).send(svg);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(finalHtml);
 
   } catch (error) {
-    res.setHeader('Content-Type', 'image/svg+xml');
-    return res.status(500).send(`<svg width="800" height="480"><rect width="800" height="480" fill="#7f1d1d"/><text x="20" y="40" fill="white" font-family="sans-serif">Chyba dashboardu: ${error.message}</text></svg>`);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(500).send(`<div style="background:#7f1d1d; color:white; padding:20px; font-family:sans-serif; height:480px;">Chyba dashboardu: ${error.message}</div>`);
   }
 }
