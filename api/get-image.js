@@ -6,7 +6,6 @@ export default async function handler(req, res) {
 
   let icalRawText = "";
 
-  // 1. STAŽENÍ KALENDÁŘE (Rychlé a izolované)
   try {
     const response = await fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (response.ok) icalRawText = await response.text();
@@ -14,7 +13,6 @@ export default async function handler(req, res) {
     console.error("iCloud sync error");
   }
 
-  // 2. PARSOVÁNÍ KALENDÁŘE ŘÁDEK PO ŘÁDKU
   const events = [];
   if (icalRawText) {
     const lines = icalRawText.split(/\r?\n/);
@@ -32,6 +30,8 @@ export default async function handler(req, res) {
           currentEvent.summary = trimmed.replace("SUMMARY:", "").trim();
         } else if (trimmed.startsWith("DTSTART")) {
           const cleanPart = trimmed.split(":").pop().trim();
+          
+          // Extrémně bezpečné vytažení roku, měsíce a dne bez ohledu na TZID
           const year = parseInt(cleanPart.substring(0, 4));
           const month = parseInt(cleanPart.substring(4, 6)) - 1;
           const day = parseInt(cleanPart.substring(6, 8));
@@ -42,6 +42,7 @@ export default async function handler(req, res) {
           } else {
             const hour = parseInt(cleanPart.substring(9, 11)) || 0;
             const minute = parseInt(cleanPart.substring(11, 13)) || 0;
+            
             if (cleanPart.endsWith("Z")) {
               currentEvent.start = new Date(Date.UTC(year, month, day, hour, minute, 0));
             } else {
@@ -57,7 +58,7 @@ export default async function handler(req, res) {
   const dnes = new Date();
   dnes.setHours(0,0,0,0);
   
-  // VYŠPERKOVÁNÍ: Rozšířeno na 5 UDÁLOSTÍ, které se nyní perfektně vejdou na plochu
+  // Zobrazujeme 5 událostí pod sebou
   const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 5);
 
   const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
@@ -69,7 +70,6 @@ export default async function handler(req, res) {
   const jmenoMesice = mesice[ceskyCas.getMonth()];
   const casAktualizace = ceskyCas.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
-  // SESTAVENÍ HTML PRO KALENDÁŘ
   let htmlEvents = "";
   if (budouciEvents.length === 0) {
     htmlEvents = `<div style="color:#86868b; text-align:center; padding:50px 0; font-size:14px; font-weight:500;">Žádné nadcházející události</div>`;
@@ -83,18 +83,17 @@ export default async function handler(req, res) {
       htmlEvents += `
         <div style="display:flex; align-items:center; background:#2c2c2e; padding:8px 12px; margin-bottom:5px; border-radius:10px; border-left:4px solid #0a84ff;">
           <div style="background:#1c1c1e; padding:4px 8px; border-radius:6px; text-align:center; min-width:42px; margin-right:12px;">
-            <span style="font-size:9px; font-weight:800; color:#ef4444; display:block; margin-bottom:1px;">${evDenvTyzdni}</span>
-            <span style="font-size:16px; font-weight:700; color:#ffffff; display:block; line-height:16px;">${evDencislo}</span>
+            <span style="font-size:9px; font-weight:800; color:#ef4444; display:block; margin-bottom:1px;">\${evDenvTyzdni}</span>
+            <span style="font-size:16px; font-weight:700; color:#ffffff; display:block; line-height:16px;">\${evDencislo}</span>
           </div>
           <div style="flex:1; min-width:0;">
-            <div style="font-size:14px; font-weight:600; color:#f5f5f7; margin-bottom:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${cleanSummary}</div>
-            <div style="font-size:11px; color:#3b82f6; font-weight:700;">🕒 ${timeString}</div>
+            <div style="font-size:14px; font-weight:600; color:#f5f5f7; margin-bottom:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">\${cleanSummary}</div>
+            <div style="font-size:11px; color:#3b82f6; font-weight:700;">🕒 \${timeString}</div>
           </div>
         </div>`;
     });
   }
 
-  // FINÁLNÍ ŠABLONA (Počasí se stahuje přímo v mobilu/displeji bleskově přes klientský skript)
   const finalHtml = `
     <!DOCTYPE html>
     <html>
@@ -112,24 +111,21 @@ export default async function handler(req, res) {
     <body>
       <div class="dashboard">
         <div class="left-panel">
-          <div style="font-size: 14px; font-weight: 800; color: #ef4444; letter-spacing: 2px; margin-bottom: 20px; text-transform: uppercase;">${jmenoDne}</div>
-          <div style="font-size: 110px; font-weight: 900; color: #ffffff; line-height: 95px; margin-bottom: 0px;">${cisloDne}</div>
-          <div style="font-size: 22px; font-weight: 600; color: #a0a0ab; margin-bottom: 30px;">${jmenoMesice}</div>
-          <div style="background: #27272a; color: #71717a; padding: 6px 15px; border-radius: 15px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;">AKTUALIZOVÁNO v ${casAktualizace}</div>
+          <div style="font-size: 14px; font-weight: 800; color: #ef4444; letter-spacing: 2px; margin-bottom: 20px; text-transform: uppercase;">\${jmenoDne}</div>
+          <div style="font-size: 110px; font-weight: 900; color: #ffffff; line-height: 95px; margin-bottom: 0px;">\${cisloDne}</div>
+          <div style="font-size: 22px; font-weight: 600; color: #a0a0ab; margin-bottom: 30px;">\${jmenoMesice}</div>
+          <div style="background: #27272a; color: #71717a; padding: 6px 15px; border-radius: 15px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;">AKTUALIZOVÁNO v \${casAktualizace}</div>
         </div>
         <div class="right-panel">
           <div style="width:100%; display:flex; flex-direction:column;">
             <div style="font-size: 13px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 15px;">RODINNÝ KALENDÁŘ</div>
-            ${htmlEvents}
+            \${htmlEvents}
           </div>
-          
-          <!-- Klientský kontejner na živé počasí -->
           <div id="weather-container" class="weather-box"></div>
         </div>
       </div>
 
       <script>
-        // Živý klientský skript, který si počasí vytáhne přímo v zařízení operativně
         async function fetchLiveWeather() {
           const wContainer = document.getElementById('weather-container');
           try {
@@ -173,7 +169,7 @@ export default async function handler(req, res) {
               wContainer.style.display = 'flex';
             }
           } catch(e) {
-            wContainer.innerHTML = '<div style="color:#71717a; text-align:center; font-size:12px; width:100%;">Předpověď počasí nedostupná</div>';
+            wContainer.innerHTML = '<div style="color:#71717a; text-align:center; font-size:12px; width:100%;">Předpověď počasí dočasně nedostupná</div>';
             wContainer.style.display = 'flex';
           }
         }
@@ -182,3 +178,6 @@ export default async function handler(req, res) {
     </body>
     </html>`.trim();
 
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  return res.status(200).send(finalHtml);
+}
