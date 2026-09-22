@@ -37,8 +37,8 @@ export default async function handler(req, res) {
       const dtstartMatch = block.match(/DTSTART(?:\s*;.*?)?:(.*)/i);
       const isAllDay = block.includes("VALUE=DATE");
 
-      if (dtstartMatch && dtstartMatch[1]) {
-        const cleanStr = dtstartMatch[1].replace(/[\r\n]/g, "").trim();
+      if (dtstartMatch && dtstartMatch) {
+        const cleanStr = dtstartMatch.replace(/[\r\n]/g, "").trim();
         const year = parseInt(cleanStr.substring(0, 4));
         const month = parseInt(cleanStr.substring(4, 6)) - 1;
         const day = parseInt(cleanStr.substring(6, 8));
@@ -57,7 +57,7 @@ export default async function handler(req, res) {
         }
 
         events.push({
-          summary: summaryMatch && summaryMatch[1] ? summaryMatch[1].replace(/[\r\n]/g, "").trim() : "Bez názvu",
+          summary: summaryMatch && summaryMatch ? summaryMatch.replace(/[\r\n]/g, "").trim() : "Bez názvu",
           start: startDate,
           isAllDay: isAllDay
         });
@@ -106,22 +106,22 @@ export default async function handler(req, res) {
     });
   }
 
-  // VYSTAVENÍ HTML PRO POČASÍ
+  // VYSTAVENÍ HTML PRO POČASÍ (PŘEPSÁNY TEXTOVÉ INDEXY PROTI STRIP CHYBÁM)
   let htmlWeather = "";
   if (weatherData && weatherData.daily) {
     const codes = {
-      0: { txt: "Jasno", ico: "☀️" }, 1: { txt: "Polojasno", ico: "⛅" }, 2: { txt: "Polojasno", ico: "⛅" }, 3: { txt: "Polojasno", ico: "⛅" },
-      45: { txt: "Mlha", ico: "🌫️" }, 48: { txt: "Mlha", ico: "🌫️" }, 51: { txt: "Mrholení", ico: "🌧️" }, 53: { txt: "Mrholení", ico: "🌧️" },
-      55: { txt: "Mrholení", ico: "🌧️" }, 61: { txt: "Déšť", ico: "🌧️" }, 63: { txt: "Déšť", ico: "🌧️" }, 65: { txt: "Déšť", ico: "🌧️" },
-      71: { txt: "Sněžení", ico: "❄️" }, 73: { txt: "Sněžení", ico: "❄️" }, 75: { txt: "Sněžení", ico: "❄️" }, 77: { txt: "Sněžení", ico: "❄️" }
+      "0": { txt: "Jasno", ico: "☀️" }, "1": { txt: "Polojasno", ico: "⛅" }, "2": { txt: "Polojasno", ico: "⛅" }, "3": { txt: "Polojasno", ico: "⛅" },
+      "45": { txt: "Mlha", ico: "🌫️" }, "48": { txt: "Mlha", ico: "🌫️" }, "51": { txt: "Mrholení", ico: "🌧️" }, "53": { txt: "Mrholení", ico: "🌧️" },
+      "55": { txt: "Mrholení", ico: "🌧️" }, "61": { txt: "Déšť", ico: "🌧️" }, "63": { txt: "Déšť", ico: "🌧️" }, "65": { txt: "Déšť", ico: "🌧️" },
+      "71": { txt: "Sněžení", ico: "❄️" }, "73": { txt: "Sněžení", ico: "❄️" }, "75": { txt: "Sněžení", ico: "❄️" }, "77": { txt: "Sněžení", ico: "❄️" }
     };
 
     htmlWeather += `<div style="display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:10px; border-radius:12px; margin-top:10px; width:100%;">`;
     for (let i = 0; i < 3; i++) {
       const maxT = Math.round(weatherData.daily.temperature_2m_max[i]);
       const minT = Math.round(weatherData.daily.temperature_2m_min[i]);
-      const code = weatherData.daily.weathercode[i];
-      const wInfo = codes[code] || { txt: "Mraky", ico: "☁️" };
+      const codeRaw = weatherData.daily.weathercode[i];
+      const wInfo = codes[String(codeRaw)] || { txt: "Mraky", ico: "☁️" }; // Převod na string a záloha na oblačno
 
       let denLabel = dnyKratke[i];
       if (i === 2) {
@@ -151,10 +151,10 @@ export default async function handler(req, res) {
       <meta charset="UTF-8">
       <style>
         * { box-sizing: border-box; }
-        html, body { margin:0; padding:0; background:#09090b; font-family:-apple-system, BlinkMacSystemFont, sans-serif; overflow:hidden; width:800px; height:480px; }
-        .dashboard { width:800px; height:480px; display:flex; background:#09090b; align-items:stretch; }
-        .left-panel { width:240px; height:100%; background:#111113; border-right:2px solid #27272a; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:30px 20px; text-align:center; }
-        .right-panel { width:560px; height:100%; padding:25px 25px 15px 25px; display:flex; flex-direction:column; justify-content:space-between; }
+        html, body { margin: 0; padding: 0; background: #09090b; font-family: -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; width: 800px; height: 480px; }
+        .dashboard { width: 800px; height: 480px; display: flex; background: #09090b; align-items: stretch; }
+        .left-panel { width: 240px; height: 100%; background: #111113; border-right: 2px solid #27272a; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px 20px; text-align: center; }
+        .right-panel { width: 560px; height: 100%; padding: 25px 25px 15px 25px; display: flex; flex-direction: column; justify-content: space-between; }
       </style>
     </head>
     <body>
