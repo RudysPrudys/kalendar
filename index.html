@@ -130,15 +130,61 @@
             }
             const icalText = await response.text();
             
-            // Zobrazíme surový text přímo na obrazovku pro diagnostiku
-            statusText.innerText = "Diagnostický režim";
-            calendarContent.innerHTML = `
-                <div style="background:var(--card-bg); padding:15px; border-radius:12px; font-family:monospace; font-size:0.8rem; white-space:pre-wrap; word-break:break-all; overflow-x:auto;">
-                    <strong>Délka stažených dat:</strong> ${icalText.length} znaků<br><br>
-                    <strong>Obsah ze serveru:</strong><br>
-                    ${icalText.substring(0, 2000).replace(/</g, "&lt;").replace(/>/g, "&gt;")}
-                </div>
-            `;
+            let events = parseiCalRobust(icalText);
+
+            // Řazení chronologicky
+            events.sort((a, b) => a.start - b.start);
+
+            // Zobrazíme události od dnešního dne
+            const dnes = new Date();
+            dnes.setHours(0,0,0,0);
+            events = events.filter(ev => ev.start >= dnes);
+
+            if (events.length === 0) {
+                calendarContent.innerHTML = "<p style='text-align:center;color:var(--status-color);'>V tomto iCloudu nebyly nalezeny žádné budoucí události.</p>";
+                statusText.innerText = "Aktualizováno (Seznam je prázdný).";
+                return;
+            }
+
+            const groupedEvents = {};
+            events.forEach(ev => {
+                const monthKey = ev.start.toLocaleString('cs-CZ', { month: 'long', year: 'numeric' });
+                if (!groupedEvents[monthKey]) groupedEvents[monthKey] = [];
+                groupedEvents[monthKey].push(ev);
+            });
+
+            calendarContent.innerHTML = "";
+            
+            for (const [month, monthEvents] of Object.entries(groupedEvents)) {
+                const section = document.createElement('div');
+                section.className = 'month-section';
+                section.innerHTML = `<div class="month-title">${month}</div>`;
+
+                monthEvents.forEach(ev => {
+                    const dayNum = ev.start.getDate();
+                    const dayName = ev.start.toLocaleString('cs-CZ', { weekday: 'short' });
+                    const timeString = ev.isAllDay ? "Celý den" : ev.start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+                    const locationHtml = ev.location ? `<div class="event-location">📍 ${ev.location}</div>` : '';
+
+                    const card = document.createElement('div');
+                    card.className = 'event-card';
+                    card.innerHTML = `
+                        <div>
+                            <div class="event-title">${ev.summary}</div>
+                            <div class="event-time">🕒 ${timeString}</div>
+                            ${locationHtml}
+                        </div>
+                        <div class="date-badge">
+                            <span class="badge-day">${dayNum}</span>
+                            <span class="badge-dayname">${dayName}</span>
+                        </div>
+                    `;
+                    section.appendChild(card);
+                });
+                calendarContent.appendChild(section);
+            }
+            statusText.innerText = "Aktualizováno";
+
         } catch (error) {
             statusText.innerText = "Chyba.";
             calendarContent.innerHTML = `<div class="error">Chyba: ${error.message}</div>`;
