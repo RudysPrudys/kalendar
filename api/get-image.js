@@ -3,14 +3,28 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
+  
+  // Bezplatné a rychlé API pro předpověď počasí (Černá Hora, ČR)
+  const weatherUrl = "https://open-meteo.com";
 
   try {
-    const response = await fetch(icloudUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0' }
-    });
+    // 1. STAŽENÍ KALENDÁŘE
+    const response = await fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (!response.ok) throw new Error("Chyba iCloudu");
     const text = await response.text();
 
+    // 2. STAŽENÍ POČASÍ
+    let weatherData = null;
+    try {
+      const wResponse = await fetch(weatherUrl);
+      if (wResponse.ok) {
+        weatherData = await wResponse.json();
+      }
+    } catch (e) {
+      console.error("Chyba načítání počasí:", e);
+    }
+
+    // Parsování kalendáře
     const events = [];
     const veventBlocks = text.split(/BEGIN:VEVENT/i);
     veventBlocks.shift(); 
@@ -49,16 +63,14 @@ export default async function handler(req, res) {
 
     events.sort((a, b) => a.start - b.start);
 
+    // Aby se nám pod kalendář luxusně vešlo počasí, uzamkneme výpis na MAX 4 UDÁLOSTI
     const dnes = new Date();
     dnes.setHours(0,0,0,0);
-    
-    // Ponecháváme zobrazení všech 5 událostí!
-    const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 5);
+    const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 4);
 
     const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
     const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
     
-    // DOKONALÁ OPRAVA ČASU: Automatická detekce českého času (letní i zimní posun)
     const aktualniDatum = new Date();
     const ceskyCasStr = aktualniDatum.toLocaleString("en-US", { timeZone: "Europe/Prague" });
     const ceskyCas = new Date(ceskyCasStr);
@@ -69,29 +81,61 @@ export default async function handler(req, res) {
     const casAktualizace = ceskyCas.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
     let htmlEvents = "";
-    
     if (budouciEvents.length === 0) {
-      htmlEvents = `<div style="color:#86868b; text-align:center; margin-top:100px; font-size:22px;">Žádné nadcházející události</div>`;
+      htmlEvents = `<div style="color:#86868b; text-align:center; padding:40px 0; font-size:18px;">Žádné nadcházející události</div>`;
     } else {
       budouciEvents.forEach(ev => {
         const evDencislo = ev.start.getDate();
         const evDenvTyzdni = ev.start.toLocaleString('cs-CZ', { weekday: 'short' }).toUpperCase();
         const timeString = ev.isAllDay ? "Celý den" : ev.start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+        const cleanSummary = ev.summary.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-        // VYŠPERKOVÁNÍ: Zmenšili jsme padding na 8px a margin na 6px, aby se 5 bublin luxusně vešlo pod sebe
         htmlEvents += `
-          <div style="display:flex; align-items:center; background:#2c2c2e; padding:8px 12px; margin-bottom:6px; border-radius:10px; border-left:4px solid #0a84ff;">
+          <div style="display:flex; align-items:center; background:#2c2c2e; padding:8px 12px; margin-bottom:5px; border-radius:10px; border-left:4px solid #0a84ff;">
             <div style="background:#1c1c1e; padding:4px 8px; border-radius:6px; text-align:center; min-width:42px; margin-right:12px;">
               <span style="font-size:9px; font-weight:800; color:#ef4444; display:block; margin-bottom:1px;">${evDenvTyzdni}</span>
               <span style="font-size:16px; font-weight:700; color:#ffffff; display:block; line-height:16px;">${evDencislo}</span>
             </div>
             <div style="flex:1; min-width:0;">
-              <div style="font-size:16px; font-weight:600; color:#f5f5f7; margin-bottom:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${ev.summary}</div>
-              <div style="font-size:12px; color:#3b82f6; font-weight:700;">🕒 ${timeString}</div>
+              <div style="font-size:15px; font-weight:600; color:#f5f5f7; margin-bottom:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${cleanSummary}</div>
+              <div style="font-size:11px; color:#3b82f6; font-weight:700;">🕒 ${timeString}</div>
             </div>
           </div>
         `;
       });
+    }
+
+    // 3. GENEROVÁNÍ BLOKU POČASÍ (Předpověď na 3 dny)
+    let htmlWeather = "";
+    if (weatherData && weatherData.daily) {
+      const interpretWmoCode = (code) => {
+        if (code === 0) return { txt: "Jasno", ico: "☀️" };
+        if (code <= 3) return { txt: "Polojasno", ico: "⛅" };
+        if (code <= 48) return { txt: "Mlhavo", ico: "🌫️" };
+        if (code <= 55) return { txt: "Mrholení", ico: "🌧️" };
+        if (code <= 65) return { txt: "Déšť", ico: "🌧️" };
+        if (code <= 77) return { txt: "Sněžení", ico: "❄️" };
+        return { txt: "Bouřky", ico: "⛈️" };
+      };
+
+      htmlWeather += `<div style="display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:12px; border-radius:12px; margin-top:auto;">`;
+      
+      const denNázvy = ["Dnes", "Zítra", "Čtvrtek"]; // Pro laika zjednodušené popisky dnů
+      for (let i = 0; i < 3; i++) {
+        const maxT = Math.round(weatherData.daily.temperature_2m_max[i]);
+        const minT = Math.round(weatherData.daily.temperature_2m_min[i]);
+        const wInfo = interpretWmoCode(weatherData.daily.weathercode[i]);
+
+        htmlWeather += `
+          <div style="text-align:center; flex:1; border-right:${i < 2 ? '1px solid #27272a' : 'none'};">
+            <div style="font-size:11px; font-weight:800; color:#a0a0ab; text-transform:uppercase; margin-bottom:2px;">${denNázvy[i]}</div>
+            <div style="font-size:22px; margin-bottom:2px;">${wInfo.ico}</div>
+            <div style="font-size:13px; font-weight:700; color:#f5f5f7;">${maxT}° / <span style="color:#71717a; font-weight:500;">${minT}°</span></div>
+            <div style="font-size:10px; color:#86868b; margin-top:1px;">${wInfo.txt}</div>
+          </div>
+        `;
+      }
+      htmlWeather += `</div>`;
     }
 
     const finalHtml = `
@@ -101,41 +145,10 @@ export default async function handler(req, res) {
         <meta charset="UTF-8">
         <style>
           * { box-sizing: border-box; }
-          html, body { 
-            margin: 0; 
-            padding: 0; 
-            background: #09090b; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            overflow: hidden;
-            width: 800px;
-            height: 480px;
-          }
-          .dashboard { 
-            width: 800px; 
-            height: 480px; 
-            display: flex; 
-            background: #09090b; 
-            align-items: stretch;
-          }
-          .left-panel { 
-            width: 240px; 
-            height: 100%; 
-            background: #111113; 
-            border-right: 2px solid #27272a; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            padding: 30px 20px; 
-            text-align: center; 
-          }
-          .right-panel { 
-            width: 560px; 
-            height: 100%; 
-            padding: 25px 25px 15px 25px; /* VYŠPERKOVÁNÍ: Optimalizované vnější okraje pro plné využití výšky */
-            display: flex; 
-            flex-direction: column; 
-          }
+          html, body { margin: 0; padding: 0; background: #09090b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; width: 800px; height: 480px; }
+          .dashboard { width: 800px; height: 480px; display: flex; background: #09090b; align-items: stretch; }
+          .left-panel { width: 240px; height: 100%; background: #111113; border-right: 2px solid #27272a; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px 20px; text-align: center; }
+          .right-panel { width: 560px; height: 100%; padding: 25px 25px 20px 25px; display: flex; flex-direction: column; justify-content: space-between; }
         </style>
       </head>
       <body>
@@ -150,10 +163,13 @@ export default async function handler(req, res) {
           
           <!-- PRAVÝ SLOUPEC -->
           <div class="right-panel">
-            <div style="font-size: 13px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 15px;">RODINNÝ KALENDÁŘ</div>
-            <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-start;">
+            <div style="width:100%;">
+              <div style="font-size: 13px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 15px;">RODINNÝ KALENDÁŘ</div>
               ${htmlEvents}
             </div>
+            
+            <!-- BLOK PŘEDPOVĚDI POČASÍ -->
+            ${htmlWeather}
           </div>
         </div>
       </body>
@@ -165,6 +181,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.status(500).send(`<div style="background:#7f1d1d; color:white; padding:20px; font-family:sans-serif; height:480px;">Chyba dashboardu: ${error.message}</div>`);
+    return res.status(500).send(`<div style="background:#7f1d1d; color:white; padding:20px; font-family:sans-serif; height:480px;">Chyba: ${error.message}</div>`);
   }
 }
