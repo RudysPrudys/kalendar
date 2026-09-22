@@ -57,6 +57,8 @@ export default async function handler(req, res) {
     const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
     
     const aktualniDatum = new Date();
+    aktualniDatum.setHours(aktualniDatum.getHours() + 2);
+    
     const jmenoDne = dnyTyždne[aktualniDatum.getDay()];
     const cisloDne = aktualniDatum.getDate();
     const jmenoMesice = mesice[aktualniDatum.getMonth()];
