@@ -97,63 +97,56 @@ export default async function handler(req, res) {
         <meta charset="UTF-8">
         <style>
           * { box-sizing: border-box; }
-          body { 
+          html, body { 
             margin: 0; 
             padding: 0; 
             background: #09090b; 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            overflow: hidden; 
+            overflow: hidden;
+            width: 800px;
+            height: 480px;
           }
           .dashboard { 
             width: 800px; 
             height: 480px; 
             display: flex; 
             background: #09090b; 
+            align-items: stretch; /* Vynutí, aby oba sloupce měly VŽDY stejnou výšku až dolů */
           }
           .left-panel { 
             width: 240px; 
-            height: 480px; 
+            height: 100%; /* Vyplní celých 480px výšky dolů */
             background: #111113; 
             border-right: 2px solid #27272a; 
             display: flex; 
             flex-direction: column; 
             align-items: center; 
-            justify-content: flex-start; /* Změněno na start pro přesné zarovnání shora */
-            padding: 35px 20px; /* Sjednoceno horní odsazení na 35px */
+            justify-content: center; /* Návrat k vašemu pěknému centrování na střed */
+            padding: 30px 20px; 
             text-align: center; 
           }
           .right-panel { 
             width: 560px; 
-            height: 480px; 
-            padding: 35px 30px; /* Sjednoceno horní odsazení na 35px */
+            height: 100%; 
+            padding: 35px 30px; 
             display: flex; 
             flex-direction: column; 
-          }
-          .all-day-badge {
-            background: #ff9500;
-            color: #000000;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 800;
-            text-transform: uppercase;
-            display: inline-block;
           }
         </style>
       </head>
       <body>
         <div class="dashboard">
-          <!-- LEVÝ SLOUPEC (Zarovnaný přesně shora jako pravý) -->
+          <!-- LEVÝ SLOUPEC (Nyní dokonale protažený až dolů na 480px) -->
           <div class="left-panel">
-            <div style="font-size: 14px; font-weight: 800; color: #ef4444; letter-spacing: 2px; margin-bottom: 25px; line-height: 1.2;">${jmenoDne}</div>
-            <div style="font-size: 100px; font-weight: 900; color: #ffffff; line-height: 90px; margin-bottom: 5px;">${cisloDne}</div>
-            <div style="font-size: 22px; font-weight: 600; color: #a0a0ab; margin-bottom: auto; line-height: 1.2;">${jmenoMesice}</div>
-            <div style="background: #27272a; color: #71717a; padding: 6px 15px; border-radius: 15px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-top: 20px;">AKTUALIZOVÁNO v ${casAktualizace}</div>
+            <div style="font-size: 14px; font-weight: 800; color: #ef4444; letter-spacing: 2px; margin-bottom: 20px; text-transform: uppercase;">${jmenoDne}</div>
+            <div style="font-size: 110px; font-weight: 900; color: #ffffff; line-height: 95px; margin-bottom: 0px;">${cisloDne}</div>
+            <div style="font-size: 22px; font-weight: 600; color: #a0a0ab; margin-bottom: 30px;">${jmenoMesice}</div>
+            <div style="background: #27272a; color: #71717a; padding: 6px 15px; border-radius: 15px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;">AKTUALIZOVÁNO v ${casAktualizace}</div>
           </div>
           
           <!-- PRAVÝ SLOUPEC -->
           <div class="right-panel">
-            <div style="font-size: 14px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 25px; line-height: 1.2;">RODINNÝ KALENDÁŘ</div>
+            <div style="font-size: 14px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 25px;">RODINNÝ KALENDÁŘ</div>
             <div style="flex: 1;">
               ${htmlEvents}
             </div>
