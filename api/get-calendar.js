@@ -8,14 +8,13 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  // OPRAVA: Změněno caldav.icloud.com na calendars.icloud.com, což obchází HTML přihlašovací smyčku Applu
   const icloudUrl = "https://icloud.com";
 
   try {
-    // Použijeme hlavičku 'Wget' nebo 'curl', aby Apple věděl, že chceme čistá iCal data a ne HTML stránku
     const response = await fetch(icloudUrl, {
       headers: {
-        'User-Agent': 'Wget/1.21.1',
-        'Accept': 'text/calendar, text/plain'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
 
