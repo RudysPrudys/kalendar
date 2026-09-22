@@ -2,6 +2,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
+  // TVŮJ UNIKÁTNÍ ODKAZ JE ZDE NAPEWNO UZAMČENÝ
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
   const weatherUrl = "https://open-meteo.com";
 
@@ -36,7 +37,6 @@ export default async function handler(req, res) {
         if (trimmed.startsWith("SUMMARY:")) {
           currentEvent.summary = trimmed.replace("SUMMARY:", "").trim();
         } else if (trimmed.startsWith("DTSTART")) {
-          // STRKTNÍ OPRAVA: cleanPart je bezpečně izolována pouze uvnitř tohoto bloku
           const cleanPart = trimmed.split(":").pop().trim();
           const year = parseInt(cleanPart.substring(0, 4));
           const month = parseInt(cleanPart.substring(4, 6)) - 1;
@@ -108,14 +108,15 @@ export default async function handler(req, res) {
   let finalDailyWeather = null;
   let jeZaloha = false;
 
-  if (weatherData && weatherData.daily && weatherData.daily.weathercode) {
+  // OPRAVENO: Kontrola přesného názvu weather_code z Open-Meteo
+  if (weatherData && weatherData.daily && weatherData.daily.weather_code) {
     finalDailyWeather = weatherData.daily;
   } else {
     jeZaloha = true;
     finalDailyWeather = {
-      temperature_2m_max: [12, 13, 11], // Změněno na reálnější podzimní zálohu, pokud by internet vypadl
-      temperature_2m_min: [6, 5, 4],
-      weathercode: [3, 2, 61]
+      temperature_2m_max:,
+      temperature_2m_min:,
+      weather_code: [1, 2, 3]
     };
   }
 
@@ -123,7 +124,7 @@ export default async function handler(req, res) {
   for (let i = 0; i < 3; i++) {
     const maxT = Math.round(finalDailyWeather.temperature_2m_max[i]);
     const minT = Math.round(finalDailyWeather.temperature_2m_min[i]);
-    const code = finalDailyWeather.weathercode[i];
+    const code = finalDailyWeather.weather_code[i];
     const wInfo = codes[code] || { txt: "Mraky", ico: "☁️" };
 
     let denLabel = dnyKratke[i];
