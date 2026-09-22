@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rodinný kalendář</title>
+    <!-- Použití knihovny pro zpracování iCal formátu -->
+    <script src="https://cloudflare.com"></script>
+    <style>
+        :root {
+            --primary-color: #63DA38; /* Barva z kalendáře */
+            --bg-color: #f4f7f6;
+            --card-bg: #ffffff;
+            --text-color: #2c3e50;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid var(--primary-color);
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            color: #1a252f;
+        }
+
+        .status {
+            font-style: italic;
+            color: #7f8c8d;
+        }
+
+        .month-section {
+            margin-bottom: 30px;
+        }
+
+        .month-title {
+            font-size: 1.4rem;
+            color: #1a252f;
+            background-color: #e8f0fe;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border-left: 5px solid var(--primary-color);
+            text-transform: capitalize;
+        }
+
+        .event-card {
+            background: var(--card-bg);
+            padding: 15px 20px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 3px solid #ddd;
+            transition: transform 0.2s;
+        }
+
+        .event-card:hover {
+            transform: translateX(3px);
+            border-left-color: var(--primary-color);
+        }
+
+        .event-details {
+            flex: 1;
+        }
+
+        .event-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .event-time {
+            font-size: 0.9rem;
+            color: #7f8c8d;
+        }
+
+        .event-location {
+            font-size: 0.85rem;
+            color: #e67e22;
+            margin-top: 5px;
+        }
+
+        .event-date-badge {
+            background: #f0f3f4;
+            padding: 8px 15px;
+            border-radius: 6px;
+            text-align: center;
+            min-width: 50px;
+            margin-left: 20px;
+        }
+
+        .badge-day {
+            font-size: 1.2rem;
+            font-weight: bold;
+            display: block;
+        }
+
+        .badge-dayname {
+            font-size: 0.75rem;
+            color: #7f8c8d;
+            text-transform: uppercase;
+        }
+
+        .error-message {
+            background: #fadbd8;
+            color: #78281f;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #f5b7b1;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1 id="cal-name">Kalendář načítání...</h1>
+        <div id="status-text" class="status">Hledám události...</div>
+    </header>
+
+    <main id="calendar-content">
+        <!-- Zde JavaScript vygeneruje události -->
+    </main>
+</div>
+
+<script>
+    // Převod odkazu z webcal na https pro stahování dat
+    const webcalUrl = "webcal://p41-caldav.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
+    const httpUrl = webcalUrl.replace("webcal://", "https://");
+
+    // Veřejná CORS proxy pro obcházení bezpečnostních limitů prohlížeče
+    const proxyUrl = "https://herokuapp.com";
+    const finalUrl = proxyUrl + httpUrl;
+
+    const calendarContent = document.getElementById('calendar-content');
+    const statusText = document.getElementById('status-text');
+    const calNameElement = document.getElementById('cal-name');
+
+    async function loadCalendar() {
+        try {
+            statusText.innerText = "Stahuji data ze serveru iCloud...";
+            const response = await fetch(finalUrl);
+            
+            if (!response.ok) {
+                // Pokud proxy vyžaduje aktivaci (časté u herokuapp proxy)
+                if (response.status === 403) {
+                    throw new Error("Je potřeba aktivovat CORS proxy. Navštivte prosím nejprve odkaz: https://herokuapp.comcorsdemo a klikněte na tlačítko.");
+                }
+                throw new Error("Nepodařilo se stáhnout data z iCloudu.");
+            }
+
+            const icalData = await response.text();
+            parseAndRenderCalendar(icalData);
+
+        } catch (error) {
+            console.error(error);
+            statusText.innerText = "Chyba načítání.";
+            calendarContent.innerHTML = `
+                <div class="error-message">
+                    <strong>Došlo k chybě při načítání kalendáře:</strong><br>
+                    ${error.message}
+                </div>
+            `;
+        }
+    }
+
+    function parseAndRenderCalendar(data) {
+        statusText.innerText = "Zpracovávám události...";
+        
+        // Parsování iCal dat pomocí knihovny ical.js
+        const jcalData = ICAL.parse(data);
+        const comp = new ICAL.Component(jcalData);
+        
+        // Získání jména kalendáře
+        const calName = comp.getFirstPropertyValue('x-wr-calname') || "Rodina";
+        calNameElement.innerText = calName;
+        
+        // Získání barvy kalendáře (pokud existuje)
+        const calColor = comp.getFirstPropertyValue('x-apple-calendar-color');
+        if (calColor) {
+            document.documentElement.style.setProperty('--primary-color', calColor);
+        }
+
+        // Vytažení všech událostí (VEVENT)
+        const vevents = comp.getAllSubcomponents('vevent');
+        let events = [];
+
+        vevents.forEach(vevent => {
+            const event = new ICAL.Event(vevent);
+            
+            // Převedení času na nativní JS Date objekt
+            const startDate = event.startDate.toJSDate();
+            const endDate = event.endDate.toJSDate();
+
+            events.push({
+                summary: event.summary,
+                location: event.location || "",
+                start: startDate,
+                end: endDate
+            });
+        });
+
+        // Seřazení událostí od nejnovějších / budoucích
+        events.sort((a, b) => b.start - a.start);
+
+        if (events.length === 0) {
+            calendarContent.innerHTML = "<p>V kalendáři nebyly nalezeny žádné události.</p>";
+            statusText.innerText = "Aktualizováno.";
+            return;
+        }
+
+        // Seskupení událostí podle měsíců
+        const groupedEvents = {};
+        events.forEach(ev => {
+            const monthKey = ev.start.toLocaleString('cs-CZ', { month: 'long', year: 'numeric' });
+            if (!groupedEvents[monthKey]) {
+                groupedEvents[monthKey] = [];
+            }
+            groupedEvents[monthKey].push(ev);
+        });
+
+        // Vykreslení do HTML
+        calendarContent.innerHTML = "";
+        
+        for (const [month, monthEvents] of Object.entries(groupedEvents)) {
+            const monthSection = document.createElement('div');
+            monthSection.className = 'month-section';
+            
+            const monthTitle = document.createElement('div');
+            monthTitle.className = 'month-title';
+            monthTitle.innerText = month;
+            monthSection.appendChild(monthTitle);
+
+            monthEvents.forEach(ev => {
+                const card = document.createElement('div');
+                card.className = 'event-card';
+
+                const dayNum = ev.start.getDate();
+                const dayName = ev.start.toLocaleString('cs-CZ', { weekday: 'short' });
+                const timeString = ev.start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+
+                let locationHtml = ev.location ? `<div class="event-location">📍 ${ev.location.replace(/\\n/g, ', ')}</div>` : '';
+
+                card.innerHTML = `
+                    <div class="event-details">
+                        <div class="event-title">${ev.summary}</div>
+                        <div class="event-time">🕒 ${timeString}</div>
+                        ${locationHtml}
+                    </div>
+                    <div class="event-date-badge">
+                        <span class="badge-day">${dayNum}</span>
+                        <span class="badge-dayname">${dayName}</span>
+                    </div>
+                `;
+                monthSection.appendChild(card);
+            });
+
+            calendarContent.appendChild(monthSection);
+        }
+
+        statusText.innerText = `Načteno celkem ${events.length} událostí.`;
+    }
+
+    // Spuštění načítání po otevření stránky
+    loadCalendar();
+</script>
+
+</body>
+</html>
