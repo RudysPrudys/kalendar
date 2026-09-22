@@ -51,7 +51,7 @@ export default async function handler(req, res) {
 
     const dnes = new Date();
     dnes.setHours(0,0,0,0);
-    const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 5);
+    const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 4);
 
     const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
     const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
@@ -75,14 +75,14 @@ export default async function handler(req, res) {
         const timeString = ev.isAllDay ? "Celý den" : ev.start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
         htmlEvents += `
-          <div style="display:flex; align-items:center; background:#2c2c2e; padding:15px; margin-bottom:12px; border-radius:12px; border-left:4px solid #0a84ff;">
-            <div style="background:#1c1c1e; padding:6px 12px; border-radius:8px; text-align:center; min-width:45px; margin-right:15px;">
-              <span style="font-size:11px; font-weight:800; color:#ef4444; display:block; margin-bottom:2px;">${evDenvTyzdni}</span>
-              <span style="font-size:20px; font-weight:700; color:#ffffff; display:block; line-height:20px;">${evDencislo}</span>
+          <div style="display:flex; align-items:center; background:#2c2c2e; padding:12px 15px; margin-bottom:10px; border-radius:12px; border-left:4px solid #0a84ff;">
+            <div style="background:#1c1c1e; padding:5px 10px; border-radius:8px; text-align:center; min-width:45px; margin-right:15px;">
+              <span style="font-size:10px; font-weight:800; color:#ef4444; display:block; margin-bottom:1px;">${evDenvTyzdni}</span>
+              <span style="font-size:18px; font-weight:700; color:#ffffff; display:block; line-height:18px;">${evDencislo}</span>
             </div>
             <div style="flex:1;">
-              <div style="font-size:19px; font-weight:600; color:#f5f5f7; margin-bottom:4px;">${ev.summary}</div>
-              <div style="font-size:14px; color:#3b82f6; font-weight:700;">🕒 ${timeString}</div>
+              <div style="font-size:18px; font-weight:600; color:#f5f5f7; margin-bottom:2px;">${ev.summary}</div>
+              <div style="font-size:13px; color:#3b82f6; font-weight:700;">🕒 ${timeString}</div>
             </div>
           </div>
         `;
