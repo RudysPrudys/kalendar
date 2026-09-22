@@ -4,7 +4,7 @@ export default async function handler(req, res) {
 
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
   
-  // Bezplatné a rychlé API pro předpověď počasí (Černá Hora, ČR)
+  // API pro předpověď počasí pro lokalitu Černá Hora
   const weatherUrl = "https://open-meteo.com";
 
   try {
@@ -35,6 +35,7 @@ export default async function handler(req, res) {
       const isAllDay = block.includes("VALUE=DATE");
 
       if (dtstartMatch && dtstartMatch[1]) {
+        // ROBUSTNÍ OPRAVA: Čistíme text přímo ze stringu v podskupině [1], ne z pole!
         const cleanStr = dtstartMatch[1].replace(/[\r\n]/g, "").trim();
         const year = parseInt(cleanStr.substring(0, 4));
         const month = parseInt(cleanStr.substring(4, 6)) - 1;
@@ -63,7 +64,7 @@ export default async function handler(req, res) {
 
     events.sort((a, b) => a.start - b.start);
 
-    // Aby se nám pod kalendář luxusně vešlo počasí, uzamkneme výpis na MAX 4 UDÁLOSTI
+    // Uzamčení výpisu na MAX 4 UDÁLOSTI pro čistý design s počasím
     const dnes = new Date();
     dnes.setHours(0,0,0,0);
     const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 4);
@@ -71,6 +72,7 @@ export default async function handler(req, res) {
     const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
     const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
     
+    // Automatická detekce českého času
     const aktualniDatum = new Date();
     const ceskyCasStr = aktualniDatum.toLocaleString("en-US", { timeZone: "Europe/Prague" });
     const ceskyCas = new Date(ceskyCasStr);
@@ -105,12 +107,12 @@ export default async function handler(req, res) {
       });
     }
 
-    // 3. GENEROVÁNÍ BLOKU POČASÍ (Předpověď na 3 dny)
+    // GENEROVÁNÍ BLOKU POČASÍ (Předpověď na 3 dny)
     let htmlWeather = "";
     if (weatherData && weatherData.daily) {
       const interpretWmoCode = (code) => {
         if (code === 0) return { txt: "Jasno", ico: "☀️" };
-        if (code <= 3) return { txt: "Polojasno", ico: "⛅" };
+        if (code <= 3) return { txt: "Polojasno", ico: "<table>⛅</table>" };
         if (code <= 48) return { txt: "Mlhavo", ico: "🌫️" };
         if (code <= 55) return { txt: "Mrholení", ico: "🌧️" };
         if (code <= 65) return { txt: "Déšť", ico: "🌧️" };
@@ -120,7 +122,7 @@ export default async function handler(req, res) {
 
       htmlWeather += `<div style="display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:12px; border-radius:12px; margin-top:auto;">`;
       
-      const denNázvy = ["Dnes", "Zítra", "Čtvrtek"]; // Pro laika zjednodušené popisky dnů
+      const denNázvy = ["Dnes", "Zítra", "Čtvrtek"]; 
       for (let i = 0; i < 3; i++) {
         const maxT = Math.round(weatherData.daily.temperature_2m_max[i]);
         const minT = Math.round(weatherData.daily.temperature_2m_min[i]);
