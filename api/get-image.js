@@ -51,7 +51,7 @@ export default async function handler(req, res) {
 
     const dnes = new Date();
     dnes.setHours(0,0,0,0);
-    const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 4);
+    const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 5);
 
     const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
     const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
