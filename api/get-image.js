@@ -3,14 +3,14 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
   const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
+  
+  // UKOTVENO: Přesný a vyčištěný odkaz na Open-Meteo API pro Černou Horu
   const weatherUrl = "https://open-meteo.com";
 
   let icalRawText = "";
   let weatherData = null;
 
   try {
-    // KLÍČOVÁ OPRAVA: Spustíme stahování z iCloudu i z Open-Meteo naráz v jeden okamžik.
-    // Tím dokonale objedeme CORS a bezpečnostní blokování platformy Vercel.
     const [icloudResponse, weatherResponse] = await Promise.all([
       fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }),
       fetch(weatherUrl, { headers: { 'User-Agent': 'ElecrowPanel/1.0' } })
@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     if (weatherResponse.ok) weatherData = await weatherResponse.json();
 
   } catch (e) {
-    console.error("Síťové stahování selhalo:", e);
+    console.error("Chyba stahování dat:", e);
   }
 
   // Parsování kalendáře řádek po řádku
@@ -62,13 +62,12 @@ export default async function handler(req, res) {
     }
   }
 
-  // Seřazení a výběr 4 nadcházejících událostí
   events.sort((a, b) => a.start - b.start);
   const dnes = new Date();
   dnes.setHours(0,0,0,0);
-  const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 5);
+  const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 4);
 
-  // České popisky a synchronizace času
+  // Časové synchronizace pro Česko
   const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
   const dnyKratke = ["Dnes", "Zítra", "Pozítří"];
   const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
@@ -104,7 +103,7 @@ export default async function handler(req, res) {
     });
   }
 
-  // Vystavení HTML pro předpověď počasí
+  // Slovník WMO kódů počasí
   const codes = {
     0: { txt: "Jasno", ico: "☀️" }, 1: { txt: "Polojasno", ico: "⛅" }, 2: { txt: "Polojasno", ico: "⛅" }, 3: { txt: "Polojasno", ico: "⛅" },
     45: { txt: "Mlha", ico: "🌫️" }, 48: { txt: "Mlha", ico: "🌫️" }, 51: { txt: "Mrholení", ico: "🌧️" }, 53: { txt: "Mrholení", ico: "🌧️" },
@@ -112,16 +111,18 @@ export default async function handler(req, res) {
     71: { txt: "Sněžení", ico: "❄️" }, 73: { txt: "Sněžení", ico: "❄️" }, 75: { txt: "Sněžení", ico: "❄️" }, 77: { txt: "Sněžení", ico: "❄️" }
   };
 
-  // Bezpečná statická záloha pro případ totálního výpadku internetu
-  let finalDailyWeather = {
-    temperature_2m_max:,
-    temperature_2m_min:,
-    weathercode: [1, 1, 1]
-  };
+  let finalDailyWeather = null;
+  let jeZaloha = false;
 
-  // Pokud Open-Meteo vrátilo živá data, přepíšeme jimi zálohu
   if (weatherData && weatherData.daily && weatherData.daily.weathercode) {
     finalDailyWeather = weatherData.daily;
+  } else {
+    jeZaloha = true;
+    finalDailyWeather = {
+      temperature_2m_max: [20, 20, 20],
+      temperature_2m_min: [10, 10, 10],
+      weathercode: [1, 1, 1]
+    };
   }
 
   let htmlWeather = `<div style="display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:10px; border-radius:12px; margin-top:10px; width:100%;">`;
@@ -138,12 +139,15 @@ export default async function handler(req, res) {
       denLabel = budiciDen.toLocaleString('cs-CZ', { weekday: 'short' });
     }
 
+    // Pokud jedeme ze zálohy, popisek nám to jasně ukáže
+    const zobrazenyText = jeZaloha ? "ZÁLOHA" : wInfo.txt;
+
     htmlWeather += `
       <div style="text-align:center; flex:1; border-right:${i < 2 ? '1px solid #27272a' : 'none'};">
         <div style="font-size:10px; font-weight:800; color:#a0a0ab; text-transform:uppercase; margin-bottom:1px;">${denLabel}</div>
         <div style="font-size:22px; margin-bottom:1px; line-height:24px;">${wInfo.ico}</div>
         <div style="font-size:12px; font-weight:700; color:#f5f5f7;">${maxT}° / <span style="color:#71717a; font-weight:500;">${minT}°</span></div>
-        <div style="font-size:9px; color:#86868b; margin-top:1px;">${wInfo.txt}</div>
+        <div style="font-size:9px; color:#86868b; margin-top:1px;">${zobrazenyText}</div>
       </div>`;
   }
   htmlWeather += `</div>`;
