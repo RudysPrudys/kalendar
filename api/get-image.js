@@ -114,7 +114,7 @@ export default async function handler(req, res) {
     71: { txt: "Sněžení", ico: "❄️" }, 73: { txt: "Sněžení", ico: "❄️" }, 75: { txt: "Sněžení", ico: "❄️" }, 77: { txt: "Sněžení", ico: "❄️" }
   };
 
-  // VYLADĚNO: Pevně definovaná záložní data (Polojasno, 19°C / 9°C), která naskočí při jakékoliv blokaci API
+  // OPRAVA: Hodnoty vyplněny reálnými čísly, aby byl kód syntakticky 100% platný
   let finalDailyWeather = {
     temperature_2m_max: [19, 18, 17],
     temperature_2m_min: [9, 8, 7],
