@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     const response = await fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (response.ok) icalRawText = await response.text();
   } catch (e) {
-    console.error("iCloud error:", e);
+    console.error("iCloud error");
   }
 
   // 2. STAŽENÍ POČASÍ
@@ -21,35 +21,10 @@ export default async function handler(req, res) {
     const wResponse = await fetch(weatherUrl, { headers: { 'User-Agent': 'ElecrowPanel/1.0' } });
     if (wResponse.ok) weatherData = await wResponse.json();
   } catch (e) {
-    console.error("Počasí error:", e);
+    console.error("Pocasni error");
   }
 
-  // Helper funkce pro převod iCal času na JS datum
-  function parseRawDate(str, isAllDay) {
-    try {
-      const clean = str.split(":").pop().replace(/[\r\n]/g, "").trim();
-      const year = parseInt(clean.substring(0, 4));
-      const month = parseInt(clean.substring(4, 6)) - 1;
-      const day = parseInt(clean.substring(6, 8));
-      
-      if (isAllDay || clean.length < 9) {
-        return new Date(year, month, day, 0, 0, 0);
-      }
-      
-      const hour = parseInt(clean.substring(9, 11)) || 0;
-      // STRKTNÍ OPRAVA: Odstraněn překlep s cleanStr assignmentem
-      const minute = parseInt(clean.substring(11, 13)) || 0;
-      
-      if (clean.endsWith("Z")) {
-        return new Date(Date.UTC(year, month, day, hour, minute, 0));
-      }
-      return new Date(year, month, day, hour, minute, 0);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // 3. PARSOVÁNÍ KALENDÁŘE
+  // 3. PARSOVÁNÍ KALENDÁŘE ŘÁDEK PO ŘÁDKU
   const events = [];
   if (icalRawText) {
     const lines = icalRawText.split(/\r?\n/);
@@ -60,29 +35,42 @@ export default async function handler(req, res) {
       if (trimmed === "BEGIN:VEVENT") {
         currentEvent = { summary: "Bez názvu", start: null, isAllDay: false };
       } else if (trimmed === "END:VEVENT" && currentEvent) {
-        if (currentEvent.start) {
-          events.push(currentEvent);
-        }
+        if (currentEvent.start) events.push(currentEvent);
         currentEvent = null;
       } else if (currentEvent) {
         if (trimmed.startsWith("SUMMARY:")) {
           currentEvent.summary = trimmed.replace("SUMMARY:", "").trim();
-        } else if (trimmed.startsWith("DTSTART:")) {
-          currentEvent.start = parseRawDate(trimmed.replace("DTSTART:", "").trim(), false);
-        } else if (trimmed.startsWith("DTSTART;VALUE=DATE:")) {
-          currentEvent.start = parseRawDate(trimmed.replace("DTSTART;VALUE=DATE:", "").trim(), true);
-          currentEvent.isAllDay = true;
+        } else if (trimmed.startsWith("DTSTART")) {
+          // Extrémně bezpečné vytažení data (najde čisté číslo textu)
+          const cleanPart = trimmed.split(":").pop().trim();
+          const year = parseInt(cleanPart.substring(0, 4));
+          const month = parseInt(cleanPart.substring(4, 6)) - 1;
+          const day = parseInt(cleanPart.substring(6, 8));
+          
+          if (trimmed.includes("VALUE=DATE") || cleanPart.length < 9) {
+            currentEvent.start = new Date(year, month, day, 0, 0, 0);
+            currentEvent.isAllDay = true;
+          } else {
+            const hour = parseInt(cleanPart.substring(9, 11)) || 0;
+            const minute = parseInt(cleanPart.substring(11, 13)) || 0;
+            if (cleanPart.endsWith("Z")) {
+              currentEvent.start = new Date(Date.UTC(year, month, day, hour, minute, 0));
+            } else {
+              currentEvent.start = new Date(year, month, day, hour, minute, 0);
+            }
+          }
         }
       }
     }
   }
 
+  // Seřazení a filtr budoucích událostí (max 4)
   events.sort((a, b) => a.start - b.start);
   const dnes = new Date();
   dnes.setHours(0,0,0,0);
   const budouciEvents = events.filter(ev => ev.start >= dnes).slice(0, 4);
 
-  // ČESKÉ POPISKY A LOKÁLNÍ ČAS
+  // ČESKÝ ČAS A POPISKY
   const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
   const dnyKratke = ["Dnes", "Zítra", "Pozítří"];
   const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
@@ -93,7 +81,7 @@ export default async function handler(req, res) {
   const jmenoMesice = mesice[ceskyCas.getMonth()];
   const casAktualizace = ceskyCas.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
-  // GENERUJI KALENDÁŘ DO HTML
+  // SESTAVENÍ HTML PRO UDÁLOSTI
   let htmlEvents = "";
   if (budouciEvents.length === 0) {
     htmlEvents = `<div style="color:#86868b; text-align:center; padding:50px 0; font-size:18px;">Žádné nadcházející události</div>`;
@@ -118,7 +106,7 @@ export default async function handler(req, res) {
     });
   }
 
-  // GENERUJI POČASÍ DO HTML
+  // SESTAVENÍ HTML PRO POČASÍ
   let htmlWeather = "";
   if (weatherData && weatherData.daily) {
     const codes = {
@@ -162,10 +150,10 @@ export default async function handler(req, res) {
       <meta charset="UTF-8">
       <style>
         * { box-sizing: border-box; }
-        html, body { margin:0; padding:0; background:#09090b; font-family:-apple-system, BlinkMacSystemFont, sans-serif; overflow:hidden; width:800px; height:480px; }
-        .dashboard { width:800px; height:480px; display:flex; background:#09090b; align-items:stretch; }
-        .left-panel { width:240px; height:100%; background:#111113; border-right:2px solid #27272a; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:30px 20px; text-align:center; }
-        .right-panel { width:560px; height:100%; padding:25px 25px 15px 25px; display:flex; flex-direction:column; justify-content:space-between; }
+        html, body { margin: 0; padding: 0; background: #09090b; font-family: -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; width: 800px; height: 480px; }
+        .dashboard { width: 800px; height: 480px; display: flex; background: #09090b; align-items: stretch; }
+        .left-panel { width: 240px; height: 100%; background: #111113; border-right: 2px solid #27272a; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px 20px; text-align: center; }
+        .right-panel { width: 560px; height: 100%; padding: 25px 25px 15px 25px; display: flex; flex-direction: column; justify-content: space-between; }
       </style>
     </head>
     <body>
