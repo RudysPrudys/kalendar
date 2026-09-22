@@ -6,10 +6,12 @@ export default async function handler(req, res) {
   const weatherUrl = "https://open-meteo.com";
 
   try {
+    // 1. STAŽENÍ KALENDÁŘE
     const response = await fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (!response.ok) throw new Error("Chyba iCloudu");
     const text = await response.text();
 
+    // 2. STAŽENÍ POČASÍ
     let weatherData = null;
     try {
       const wResponse = await fetch(weatherUrl, {
@@ -22,6 +24,7 @@ export default async function handler(req, res) {
       console.error("Chyba pocasi:", e);
     }
 
+    // 3. PARSOVÁNÍ KALENDÁŘE
     const events = [];
     const veventBlocks = text.split(/BEGIN:VEVENT/i);
     veventBlocks.shift(); 
@@ -31,6 +34,7 @@ export default async function handler(req, res) {
       const dtstartMatch = block.match(/DTSTART(?:\s*;.*?)?:(.*)/i);
       const isAllDay = block.includes("VALUE=DATE");
 
+      // ZASTRÁŽENO S INDEXEM [1]
       if (dtstartMatch && dtstartMatch[1]) {
         const cleanStr = dtstartMatch[1].replace(/[\r\n]/g, "").trim();
         const year = parseInt(cleanStr.substring(0, 4));
@@ -102,6 +106,7 @@ export default async function handler(req, res) {
       });
     }
 
+    // 4. VYKRESLENÍ BLOKU POČASÍ
     let htmlWeather = "";
     if (weatherData && weatherData.daily) {
       const interpretWmoCode = (code) => {
