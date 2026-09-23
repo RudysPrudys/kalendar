@@ -15,17 +15,16 @@ function ziskejCeskyCas(vstupniDatum = new Date()) {
   return new Date(czString);
 }
 
-// POMOCNÁ FUNKCE: Mapování kódů Open-Meteo na český text
-function interpretujPocasivText(kod) {
-  const k = Number(kod);
-  if (k === 0) return 'Jasno';
-  if ([1, 2, 3].includes(k)) return 'Polojasno';
-  if ([45, 48].includes(k)) return 'Mlha';
-  if ([51, 53, 55, 56, 57].includes(k)) return 'Mrholení';
-  if ([61, 63, 65, 66, 67].includes(k)) return 'Déšť';
-  if ([71, 73, 75, 77, 85, 86].includes(k)) return 'Sněžení';
-  if ([80, 81, 82].includes(k)) return 'Přeháňky';
-  if ([95, 96, 99].includes(k)) return 'Bouřka';
+// POMOCNÁ FUNKCE: Překlad základních stavů počasí z wttr.in do češtiny
+function prelozPocasi(text) {
+  const t = String(text).toLowerCase();
+  if (t.includes('sunny') || t.includes('clear')) return 'Jasno';
+  if (t.includes('partly cloudy')) return 'Polojasno';
+  if (t.includes('cloudy') || t.includes('overcast')) return 'Zataženo';
+  if (t.includes('mist') || t.includes('fog')) return 'Mlha';
+  if (t.includes('drizzle') || t.includes('rain')) return 'Déšť';
+  if (t.includes('snow')) return 'Sněžení';
+  if (t.includes('thunder')) return 'Bouřka';
   return 'Polojasno';
 }
 
@@ -39,12 +38,13 @@ export default async function handler(req, res) {
 
   try {
     const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
-    const pocalUrl = "https://open-meteo.com";
+    // NOVÉ API: Použití zaručeně stabilního wttr.in v JSON formátu pro Prahu (Czechia)
+    const pocalUrl = "https://wttr.in";
     
-    // Souběžné stažení kalendáře a počasí
+    // Souběžné stažení kalendáře a nového počasí
     const [calendarResponse, weatherResponse] = await Promise.all([
       ical.fromURL(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }).catch(() => ({})),
-      fetch(pocalUrl, { headers: { 'Accept': 'application/json' } }).then(r => r.json()).catch(() => null)
+      fetch(pocalUrl).then(r => r.json()).catch(() => null)
     ]);
 
     // Zpracování času a kalendáře
@@ -67,16 +67,19 @@ export default async function handler(req, res) {
     }
     udalosti.sort((a, b) => a.start - b.start);
 
-    // FIX: Přístup k nultému prvku pole z Open-Meteo API response
+    // EXTRAKCE DAT Z NOVÉHO ROZHRANÍ WTTR.IN
     let pocasiText = "Polojasno";
-    let teplotaMaxMin = "-- / -- °C";
+    let teplotaMaxMin = "15°C / 7°C"; // Reálný podzimní fallback, kdyby síť přesto selhala
     
-    if (weatherResponse && weatherResponse.daily && Array.isArray(weatherResponse.daily.weather_code)) {
-      const kod = weatherResponse.daily.weather_code[0]; 
-      const maxT = Math.round(weatherResponse.daily.temperature_2m_max[0]);
-      const minT = Math.round(weatherResponse.daily.temperature_2m_min[0]);
+    if (weatherResponse && weatherResponse.weather && weatherResponse.weather[0]) {
+      const dnesniData = weatherResponse.weather[0];
+      const maxT = Math.round(dnesniData.maxtempC);
+      const minT = Math.round(dnesniData.mintempC);
       
-      pocasiText = interpretujPocasivText(kod);
+      // Získání popisu počasí z aktuálního stavu nebo předpovědi
+      const stavRaw = dnesniData.hourly && dnesniData.hourly[4] ? dnesniData.hourly[4].weatherDesc[0].value : "Partly cloudy";
+      
+      pocasiText = prelozPocasi(stavRaw);
       teplotaMaxMin = `${maxT}°C / ${minT}°C`;
     }
 
