@@ -15,6 +15,19 @@ function ziskejCeskyCas(vstupniDatum = new Date()) {
   return new Date(czString);
 }
 
+// POMOCNÁ FUNKCE: Překlad základních kódů počasí (zjednodušený plochý přehled)
+function prelozPocasiKod(kod) {
+  const k = Number(kod);
+  if (k === 0) return 'Jasno';
+  if (.includes(k)) return 'Polojasno';
+  if (.includes(k)) return 'Mlha';
+  if (.includes(k)) return 'Mrholení';
+  if (.includes(k)) return 'Déšť';
+  if (.includes(k)) return 'Sněžení';
+  if (.includes(k)) return 'Bouřka';
+  return 'Polojasno';
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -25,12 +38,14 @@ export default async function handler(req, res) {
 
   try {
     const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
-    const pocalUrl = "https://met.no";
+    
+    // NOVÝ PŘÍSTUP: Vyžádání plochého parametru current_weather=true (žádná hluboká pole)
+    const pocalUrl = "https://open-meteo.com";
     
     // Souběžné stažení kalendáře a počasí
     const [calendarResponse, weatherResponse] = await Promise.all([
       ical.fromURL(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }).catch(() => ({})),
-      fetch(pocalUrl, { headers: { 'User-Agent': 'VercelCalendarWidget/1.0 venca@gmail.com' } }).then(r => r.json()).catch(() => null)
+      fetch(pocalUrl).then(r => r.json()).catch(() => null)
     ]);
 
     // Zpracování času a kalendáře
@@ -54,27 +69,18 @@ export default async function handler(req, res) {
     udalosti.sort((a, b) => a.start - b.start);
 
     // ----------------------------------------------------
-    // OPRAVA PARSOVÁNÍ: Přidán index [0] pro aktuální hodinu
+    // NOVÉ PARSOVÁNÍ: Extrémně jednoduché a ploché čtení z "current_weather"
     // ----------------------------------------------------
     let pocasiText = "Polojasno";
     let teplotaMaxMin = "-- °C";
     
-    if (weatherResponse && weatherResponse.properties && Array.isArray(weatherResponse.properties.timeseries) && weatherResponse.properties.timeseries.length > 0) {
-      // Výběr nultého (aktuálního) záznamu z časové osy
-      const aktualniCasovaOsa = weatherResponse.properties.timeseries[0];
+    if (weatherResponse && weatherResponse.current_weather) {
+      // Žádné indexy [0], data leží přímo v první vrstvě objektu
+      const teplotaRaw = weatherResponse.current_weather.temperature;
+      const kodRaw = weatherResponse.current_weather.weathercode;
       
-      if (aktualniCasovaOsa.data && aktualniCasovaOsa.data.instant && aktualniCasovaOsa.data.instant.details) {
-        const dataMeteo = aktualniCasovaOsa.data.instant.details;
-        const aktualniTeplota = Math.round(dataMeteo.air_temperature);
-        const oblaky = dataMeteo.cloud_area_fraction;
-        
-        // Výpočet slovního stavu podle procent oblačnosti
-        if (oblaky < 25) pocasiText = "Jasno";
-        else if (oblaky < 65) pocasiText = "Polojasno";
-        else pocasiText = "Zataženo";
-        
-        teplotaMaxMin = `${aktualniTeplota} °C`;
-      }
+      pocasiText = prelozPocasiKod(kodRaw);
+      teplotaMaxMin = `${Math.round(teplotaRaw)} °C`;
     }
 
     // Inicializace plátna (800x480)
