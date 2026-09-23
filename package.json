@@ -1,0 +1,10 @@
+{
+  "name": "crowpanel-kalendar-api",
+  "version": "1.0.0",
+  "description": "API pro generování obrázku kalendáře do ESP32",
+  "main": "api/get-image.js",
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.62",
+    "node-ical": "^0.18.0"
+  }
+}
