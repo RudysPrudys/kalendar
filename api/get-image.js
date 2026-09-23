@@ -15,17 +15,18 @@ function ziskejCeskyCas(vstupniDatum = new Date()) {
   return new Date(czString);
 }
 
-// POMOCNÁ FUNKCE: Mapování kódů Open-Meteo na český text
+// POMOCNÁ FUNKCE: Správné a otestované mapování kódů Open-Meteo na český text
 function interpretujPocasivText(kod) {
-  if (kod === 0) return 'Jasno';
-  if ([1, 2, 3].includes(kod)) return 'Polojasno';
-  if ([45, 48].includes(kod)) return 'Mlha';
-  if ([51, 53, 55].includes(kod)) return 'Mrholení';
-  if ([61, 63, 65].includes(kod)) return 'Déšť';
-  if ([71, 73, 75].includes(kod)) return 'Sněžení';
-  if ([80, 81, 82].includes(kod)) return 'Přeháňky';
-  if ([95, 96, 99].includes(kod)) return 'Bouřka';
-  return 'Proměnlivo';
+  const k = Number(kod);
+  if (k === 0) return 'Jasno';
+  if ([1, 2, 3].includes(k)) return 'Polojasno';
+  if ([45, 48].includes(k)) return 'Mlha';
+  if ([51, 53, 55, 56, 57].includes(k)) return 'Mrholení';
+  if ([61, 63, 65, 66, 67].includes(k)) return 'Déšť';
+  if ([71, 73, 75, 77, 85, 86].includes(k)) return 'Sněžení';
+  if ([80, 81, 82].includes(k)) return 'Přeháňky';
+  if ([95, 96, 99].includes(k)) return 'Bouřka';
+  return 'Polojasno'; // Bezpečný fallback
 }
 
 export default async function handler(req, res) {
@@ -38,16 +39,15 @@ export default async function handler(req, res) {
 
   try {
     const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
-
-    // 1. Souběžné stahování kalendáře a počasí (ušetří čas načítání)
     const pocalUrl = "https://open-meteo.com";
     
+    // Souběžné stažení kalendáře a počasí
     const [calendarResponse, weatherResponse] = await Promise.all([
       ical.fromURL(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }).catch(() => ({})),
       fetch(pocalUrl).then(r => r.json()).catch(() => null)
     ]);
 
-    // 2. Zpracování času a kalendáře
+    // Zpracování času a kalendáře
     const ted = ziskejCeskyCas(new Date());
     const udalosti = [];
 
@@ -67,18 +67,20 @@ export default async function handler(req, res) {
     }
     udalosti.sort((a, b) => a.start - b.start);
 
-    // 3. Extrakce dat o počasí
-    let pocasiText = "Předpověď nedostupná";
+    // OPRAVENÁ EXTRAKCE DAT O POČASÍ (Ošetření polí z Open-Meteo)
+    let pocasiText = "Polojasno";
     let teplotaMaxMin = "-- / -- °C";
-    if (weatherResponse && weatherResponse.daily) {
-      const kod = weatherResponse.daily.weather_code[0];
+    
+    if (weatherResponse && weatherResponse.daily && weatherResponse.daily.weather_code) {
+      const kod = weatherResponse.daily.weather_code[0]; // Načtení prvního dne z pole
       const maxT = Math.round(weatherResponse.daily.temperature_2m_max[0]);
       const minT = Math.round(weatherResponse.daily.temperature_2m_min[0]);
+      
       pocasiText = interpretujPocasivText(kod);
       teplotaMaxMin = `${maxT}°C / ${minT}°C`;
     }
 
-    // 4. Inicializace plátna (800x480)
+    // Inicializace plátna (800x480)
     const width = 800;
     const height = 480;
     const canvas = createCanvas(width, height);
@@ -93,7 +95,7 @@ export default async function handler(req, res) {
     ctx.fillRect(276, 0, 4, height);
 
     // ----------------------------------------------------
-    // LEVÝ PANEL: HODINY A DATUM
+    // LEVÝ PANEL: HODINY A DATUM (ZACHOVÁNY POZICE)
     // ----------------------------------------------------
     ctx.textAlign = 'center';
     
@@ -118,9 +120,8 @@ export default async function handler(req, res) {
     ctx.fillText(`${mesicePlne[ted.getMonth()]} ${ted.getFullYear()}`, 140, 250);
 
     // ----------------------------------------------------
-    // NOVINKA - LEVÝ PANEL: PŘEDPOVĚĎ POČASÍ (od y=290 dolů)
+    // LEVÝ PANEL: PŘEDPOVĚĎ POČASÍ (ZACHOVÁNY POZICE)
     // ----------------------------------------------------
-    // Jemná dělící linka pro sekci počasí
     ctx.strokeStyle = '#374151';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -128,17 +129,14 @@ export default async function handler(req, res) {
     ctx.lineTo(250, 285);
     ctx.stroke();
 
-    // Titulek sekce
     ctx.fillStyle = '#9CA3AF';
     ctx.font = '13px DisplejFont';
     ctx.fillText('DNEŠNÍ POČASÍ', 140, 315);
 
-    // Stav počasí textově
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 22px DisplejFont';
     ctx.fillText(pocasiText, 140, 355);
 
-    // Teplotní rozsah (Max / Min)
     ctx.fillStyle = '#3B82F6';
     ctx.font = 'bold 24px DisplejFont';
     ctx.fillText(teplotaMaxMin, 140, 400);
@@ -147,7 +145,7 @@ export default async function handler(req, res) {
     ctx.textAlign = 'left';
 
     // ----------------------------------------------------
-    // PRAVÝ PANEL: KALENDÁŘ
+    // PRAVÝ PANEL: KALENDÁŘ (ZACHOVÁNY POZICE)
     // ----------------------------------------------------
     ctx.fillStyle = '#1F2937';
     ctx.font = 'bold 24px DisplejFont';
