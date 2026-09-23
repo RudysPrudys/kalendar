@@ -21,10 +21,10 @@ function interpretujPocasivText(kod) {
   if (k === 0) return 'Jasno';
   if ([1, 2, 3].includes(k)) return 'Polojasno';
   if ([45, 48].includes(k)) return 'Mlha';
-  if ([51, 53, 55].includes(k)) return 'Mrholení';
-  if ([61, 63, 65, 80, 81, 82].includes(k)) return 'Déšť';
+  if ([51, 53, 55, 56, 57].includes(k)) return 'Mrholení';
+  if ([61, 63, 65, 66, 67].includes(k)) return 'Déšť';
   if ([71, 73, 75, 77, 85, 86].includes(k)) return 'Sněžení';
-  if ([3].includes(k)) return 'Přeháňky';
+  if ([80, 81, 82].includes(k)) return 'Přeháňky';
   if ([95, 96, 99].includes(k)) return 'Bouřka';
   return 'Polojasno';
 }
@@ -39,7 +39,6 @@ export default async function handler(req, res) {
 
   try {
     const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
-    // Upravená URL s explicitním vyžádáním formátu pro jistotu
     const pocalUrl = "https://open-meteo.com";
     
     // Souběžné stažení kalendáře a počasí
@@ -68,7 +67,7 @@ export default async function handler(req, res) {
     }
     udalosti.sort((a, b) => a.start - b.start);
 
-    // OPRAVA PARSOVÁNÍ DATA Z OPEN-METEO (Získání nultého indexu z polí array)
+    // FIX: Přístup k nultému prvku pole z Open-Meteo API response
     let pocasiText = "Polojasno";
     let teplotaMaxMin = "-- / -- °C";
     
