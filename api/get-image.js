@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const icloudUrl = "https://icloud.com";
+    const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
 
     const webEvents = await ical.fromURL(icloudUrl, {
       headers: {
