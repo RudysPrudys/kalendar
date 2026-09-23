@@ -67,19 +67,21 @@ export default async function handler(req, res) {
     udalosti.sort((a, b) => a.start - b.start);
 
     // ----------------------------------------------------
-    // OPRAVA: OPRAVENÉ INDEXY PRO PARSOVÁNÍ WTTR.IN JSONU
+    // ROZBALENÍ DAT Z WTTR.IN STRUKTURY (OPRAVENO)
     // ----------------------------------------------------
     let pocasiText = "Polojasno";
     let teplotaMaxMin = "-- / -- °C";
     
     if (weatherResponse && Array.isArray(weatherResponse.weather) && weatherResponse.weather.length > 0) {
-      const dnesniData = weatherResponse.weather[0]; // Načtení prvního dne z pole (dnes)
-      const maxT = Math.round(dnesniData.maxtempC);
-      const minT = Math.round(dnesniData.mintempC);
+      const dnesniData = weatherResponse.weather[0]; // První den z pole
+      const maxT = Math.round(Number(dnesniData.maxtempC)); // Maximální teplota
+      const minT = Math.round(Number(dnesniData.mintempC)); // Minimální teplota
       
-      // Bezpečné načtení textového stavu počasí z hourly parametrů
       let stavRaw = "Partly cloudy";
-      if (dnesniData.hourly && dnesniData.hourly.length > 0 && dnesniData.hourly[0].weatherDesc && dnesniData.hourly[0].weatherDesc.length > 0) {
+      // wttr.in schovává popis do current_condition[0].weatherDesc[0].value nebo do hourly[0].weatherDesc[0].value
+      if (weatherResponse.current_condition && weatherResponse.current_condition[0] && weatherResponse.current_condition[0].weatherDesc) {
+        stavRaw = weatherResponse.current_condition[0].weatherDesc[0].value;
+      } else if (dnesniData.hourly && dnesniData.hourly[0] && dnesniData.hourly[0].weatherDesc) {
         stavRaw = dnesniData.hourly[0].weatherDesc[0].value;
       }
       
