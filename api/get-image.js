@@ -25,14 +25,12 @@ export default async function handler(req, res) {
 
   try {
     const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
-    
-    // Nové, vysoce stabilní API z národního meteorologického systému (předpověď pro ČR)
     const pocalUrl = "https://met.no";
     
-    // Souběžné stažení kalendáře a nového počasí
+    // Souběžné stažení kalendáře a počasí
     const [calendarResponse, weatherResponse] = await Promise.all([
       ical.fromURL(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }).catch(() => ({})),
-      fetch(pocalUrl, { headers: { 'User-Agent': 'VercelCalendarWidget/1.0 ://github.com' } }).then(r => r.json()).catch(() => null)
+      fetch(pocalUrl, { headers: { 'User-Agent': 'VercelCalendarWidget/1.0 venca@gmail.com' } }).then(r => r.json()).catch(() => null)
     ]);
 
     // Zpracování času a kalendáře
@@ -56,23 +54,27 @@ export default async function handler(req, res) {
     udalosti.sort((a, b) => a.start - b.start);
 
     // ----------------------------------------------------
-    // PARSOVÁNÍ DAT Z NOVÉHO METEOROLOGICKÉHO API
+    // OPRAVA PARSOVÁNÍ: Přidán index [0] pro aktuální hodinu
     // ----------------------------------------------------
     let pocasiText = "Polojasno";
-    let teplotaMaxMin = "-- / -- °C";
+    let teplotaMaxMin = "-- °C";
     
-    if (weatherResponse && weatherResponse.properties && weatherResponse.properties.timeseries) {
-      const dataDnes = weatherResponse.properties.timeseries[0].data.instant.details;
-      const aktualniTeplota = Math.round(dataDnes.air_temperature);
+    if (weatherResponse && weatherResponse.properties && Array.isArray(weatherResponse.properties.timeseries) && weatherResponse.properties.timeseries.length > 0) {
+      // Výběr nultého (aktuálního) záznamu z časové osy
+      const aktualniCasovaOsa = weatherResponse.properties.timeseries[0];
       
-      // Zjistíme přibližný stav podle oblačnosti
-      const oblaky = weatherResponse.properties.timeseries[0].data.instant.details.cloud_area_fraction;
-      if (oblaky < 20) pocasiText = "Jasno";
-      else if (oblaky < 60) pocasiText = "Polojasno";
-      else pocasiText = "Zataženo";
-      
-      // Jelikož toto API dává blesková data pro aktuální hodinu, ukážeme aktuální teplotu jako hlavní údaj
-      teplotaMaxMin = `${aktualniTeplota} °C`;
+      if (aktualniCasovaOsa.data && aktualniCasovaOsa.data.instant && aktualniCasovaOsa.data.instant.details) {
+        const dataMeteo = aktualniCasovaOsa.data.instant.details;
+        const aktualniTeplota = Math.round(dataMeteo.air_temperature);
+        const oblaky = dataMeteo.cloud_area_fraction;
+        
+        // Výpočet slovního stavu podle procent oblačnosti
+        if (oblaky < 25) pocasiText = "Jasno";
+        else if (oblaky < 65) pocasiText = "Polojasno";
+        else pocasiText = "Zataženo";
+        
+        teplotaMaxMin = `${aktualniTeplota} °C`;
+      }
     }
 
     // Inicializace plátna (800x480)
@@ -122,7 +124,7 @@ export default async function handler(req, res) {
 
     ctx.fillStyle = '#9CA3AF';
     ctx.font = '13px DisplejFont';
-    ctx.fillText('AKTUÁLNÍ POČASÍ', 140, 315); // změněno na aktuální, jelikož dává přesnější hodinová data
+    ctx.fillText('AKTUÁLNÍ POČASÍ', 140, 315);
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 22px DisplejFont';
