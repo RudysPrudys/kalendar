@@ -15,19 +15,6 @@ function ziskejCeskyCas(vstupniDatum = new Date()) {
   return new Date(czString);
 }
 
-// POMOCNÁ FUNKCE: Překlad základních stavů počasí z wttr.in do češtiny
-function prelozPocasi(text) {
-  const t = String(text).toLowerCase();
-  if (t.includes('sunny') || t.includes('clear')) return 'Jasno';
-  if (t.includes('partly cloudy')) return 'Polojasno';
-  if (t.includes('cloudy') || t.includes('overcast')) return 'Zataženo';
-  if (t.includes('mist') || t.includes('fog')) return 'Mlha';
-  if (t.includes('drizzle') || t.includes('rain')) return 'Déšť';
-  if (t.includes('snow')) return 'Sněžení';
-  if (t.includes('thunder')) return 'Bouřka';
-  return 'Polojasno';
-}
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -38,12 +25,14 @@ export default async function handler(req, res) {
 
   try {
     const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
-    const pocalUrl = "https://wttr.in";
     
-    // Souběžné stažení kalendáře a počasí
+    // Nové, vysoce stabilní API z národního meteorologického systému (předpověď pro ČR)
+    const pocalUrl = "https://met.no";
+    
+    // Souběžné stažení kalendáře a nového počasí
     const [calendarResponse, weatherResponse] = await Promise.all([
       ical.fromURL(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }).catch(() => ({})),
-      fetch(pocalUrl).then(r => r.json()).catch(() => null)
+      fetch(pocalUrl, { headers: { 'User-Agent': 'VercelCalendarWidget/1.0 ://github.com' } }).then(r => r.json()).catch(() => null)
     ]);
 
     // Zpracování času a kalendáře
@@ -67,26 +56,23 @@ export default async function handler(req, res) {
     udalosti.sort((a, b) => a.start - b.start);
 
     // ----------------------------------------------------
-    // ROZBALENÍ DAT Z WTTR.IN STRUKTURY (OPRAVENO)
+    // PARSOVÁNÍ DAT Z NOVÉHO METEOROLOGICKÉHO API
     // ----------------------------------------------------
     let pocasiText = "Polojasno";
     let teplotaMaxMin = "-- / -- °C";
     
-    if (weatherResponse && Array.isArray(weatherResponse.weather) && weatherResponse.weather.length > 0) {
-      const dnesniData = weatherResponse.weather[0]; // První den z pole
-      const maxT = Math.round(Number(dnesniData.maxtempC)); // Maximální teplota
-      const minT = Math.round(Number(dnesniData.mintempC)); // Minimální teplota
+    if (weatherResponse && weatherResponse.properties && weatherResponse.properties.timeseries) {
+      const dataDnes = weatherResponse.properties.timeseries[0].data.instant.details;
+      const aktualniTeplota = Math.round(dataDnes.air_temperature);
       
-      let stavRaw = "Partly cloudy";
-      // wttr.in schovává popis do current_condition[0].weatherDesc[0].value nebo do hourly[0].weatherDesc[0].value
-      if (weatherResponse.current_condition && weatherResponse.current_condition[0] && weatherResponse.current_condition[0].weatherDesc) {
-        stavRaw = weatherResponse.current_condition[0].weatherDesc[0].value;
-      } else if (dnesniData.hourly && dnesniData.hourly[0] && dnesniData.hourly[0].weatherDesc) {
-        stavRaw = dnesniData.hourly[0].weatherDesc[0].value;
-      }
+      // Zjistíme přibližný stav podle oblačnosti
+      const oblaky = weatherResponse.properties.timeseries[0].data.instant.details.cloud_area_fraction;
+      if (oblaky < 20) pocasiText = "Jasno";
+      else if (oblaky < 60) pocasiText = "Polojasno";
+      else pocasiText = "Zataženo";
       
-      pocasiText = prelozPocasi(stavRaw);
-      teplotaMaxMin = `${maxT}°C / ${minT}°C`;
+      // Jelikož toto API dává blesková data pro aktuální hodinu, ukážeme aktuální teplotu jako hlavní údaj
+      teplotaMaxMin = `${aktualniTeplota} °C`;
     }
 
     // Inicializace plátna (800x480)
@@ -136,7 +122,7 @@ export default async function handler(req, res) {
 
     ctx.fillStyle = '#9CA3AF';
     ctx.font = '13px DisplejFont';
-    ctx.fillText('DNEŠNÍ POČASÍ', 140, 315);
+    ctx.fillText('AKTUÁLNÍ POČASÍ', 140, 315); // změněno na aktuální, jelikož dává přesnější hodinová data
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 22px DisplejFont';
