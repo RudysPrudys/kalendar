@@ -1,5 +1,14 @@
-import { createCanvas } from '@napi-rs/canvas';
+import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
 import ical from 'node-ical';
+import path from 'path';
+
+// 1. Registrace fontu, aby Vercel věděl, jak vykreslit text
+try {
+  const fontPath = path.join(process.cwd(), 'api', 'font.ttf');
+  GlobalFonts.registerFromPath(fontPath, 'DisplejFont');
+} catch (e) {
+  console.error('Nepodařilo se načíst lokální font:', e);
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -10,17 +19,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Přímá URL na váš iCloud kalendář (převzato z get-calendar.js)
     const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
 
-    // 2. Stažení a naparsování ICS textu s User-Agentem, který Apple vyžaduje
+    // Stažení dat z iCloudu
     const webEvents = await ical.fromURL(icloudUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
     
-    // 3. Zpracování a filtrace událostí
     const ted = new Date();
     const udalosti = [];
 
@@ -29,9 +36,7 @@ export default async function handler(req, res) {
         const ev = webEvents[k];
         if (ev.type === 'VEVENT') {
           const startDate = new Date(ev.start);
-          
-          // Zobrazíme události, které ještě neskončily, nebo začínají v budoucnu
-          // (Ponecháme události, které začaly max před 3 hodinami)
+          // Události, které začaly max před 3 hodinami nebo teprve začnou
           if (startDate.getTime() > ted.getTime() - (3 * 60 * 60 * 1000)) {
             udalosti.push({
               title: ev.summary || 'Bez názvu',
@@ -42,10 +47,10 @@ export default async function handler(req, res) {
       }
     }
 
-    // Seřazení od nejbližší
+    // Seřazení událostí podle času
     udalosti.sort((a, b) => a.start - b.start);
 
-    // 4. Inicializace plátna (800x480)
+    // Inicializace plátna 800x480
     const width = 800;
     const height = 480;
     const canvas = createCanvas(width, height);
@@ -55,9 +60,9 @@ export default async function handler(req, res) {
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, width, height);
 
-    // Záhlaví
+    // Záhlaví - POUŽITÍ REGISTROVANÉHO FONTU
     ctx.fillStyle = '#111827';
-    ctx.font = 'bold 32px sans-serif';
+    ctx.font = 'bold 32px DisplejFont';
     ctx.fillText('Můj iCloud Kalendář', 40, 60);
 
     // Hlavní linka
@@ -68,14 +73,12 @@ export default async function handler(req, res) {
     ctx.lineTo(760, 85);
     ctx.stroke();
 
-    // 5. Vykreslení textů událostí
     let yOffset = 140;
     const maxUdalosti = 5;
 
     if (udalosti.length === 0) {
-      // Pokud je pole prázdné, vypíšeme to na displej, abychom viděli, že kód běží
       ctx.fillStyle = '#6B7280';
-      ctx.font = 'italic 24px sans-serif';
+      ctx.font = 'italic 24px DisplejFont';
       ctx.fillText('Žádné nadcházející události v iCloudu.', 40, yOffset);
     } else {
       const kZobrazeni = udalosti.slice(0, maxUdalosti);
@@ -83,23 +86,20 @@ export default async function handler(req, res) {
       kZobrazeni.forEach((udalost) => {
         const dny = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
         const denTydne = dny[udalost.start.getDay()];
-        
-        // Formátování dne a měsíce
         const formatovaneDatum = `${denTydne} ${udalost.start.getDate()}. ${udalost.start.getMonth() + 1}.`;
         
-        // Bezpečné formátování času pro Node.js prostředí na Vercelu
         const hodiny = String(udalost.start.getHours()).padStart(2, '0');
         const minuty = String(udalost.start.getMinutes()).padStart(2, '0');
         const formatovanyCas = `${hodiny}:${minuty}`;
 
-        // Vykreslení data a času (Modrá)
+        // Datum a čas (Modrá)
         ctx.fillStyle = '#2563EB';
-        ctx.font = 'bold 22px sans-serif';
+        ctx.font = 'bold 22px DisplejFont';
         ctx.fillText(`${formatovaneDatum} v ${formatovanyCas}`, 40, yOffset);
 
-        // Vykreslení názvu (Černá)
+        // Název události (Černá)
         ctx.fillStyle = '#111827';
-        ctx.font = '22px sans-serif';
+        ctx.font = '22px DisplejFont';
         
         let nazev = udalost.title;
         if (nazev.length > 35) {
@@ -107,7 +107,7 @@ export default async function handler(req, res) {
         }
         ctx.fillText(nazev, 340, yOffset);
 
-        // Mezirádková linka
+        // Dělící čára mezi řádky
         ctx.strokeStyle = '#E5E7EB';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -119,26 +119,28 @@ export default async function handler(req, res) {
       });
     }
 
-    // 6. Odeslání PNG obrázku
+    // Odeslání výsledného PNG obrázku
     const buffer = canvas.toBuffer('image/png');
     res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'public, max-age=60, must-revalidate'); // Snížena cache na 1 minutu pro testování
+    res.setHeader('Cache-Control', 'public, max-age=10, must-revalidate'); 
     return res.status(200).send(buffer);
 
   } catch (error) {
-    console.error('Chyba na Vercelu:', error);
+    console.error('Kritická chyba:', error);
     
-    // Pokud selže úplně všechno, vykreslíme chybu přímo do obrázku, abyste ji viděl na mobilu
+    // Nouzové vykreslení chybové hlášky, pokud selže iCloudu / parsování
     const errorCanvas = createCanvas(800, 480);
     const errorCtx = errorCanvas.getContext('2d');
     errorCtx.fillStyle = '#FFFFFF';
     errorCtx.fillRect(0, 0, 800, 480);
+    
     errorCtx.fillStyle = '#DC2626';
-    errorCtx.font = 'bold 20px sans-serif';
-    errorCtx.fillText('Chyba při generování obrázku:', 40, 100);
+    errorCtx.font = 'bold 22px DisplejFont';
+    errorCtx.fillText('Chyba při generování obrázku:', 40, 80);
+    
     errorCtx.fillStyle = '#111827';
-    errorCtx.font = '16px sans-serif';
-    errorCtx.fillText(error.message, 40, 140);
+    errorCtx.font = '16px DisplejFont';
+    errorCtx.fillText(error.message || 'Neznámá chyba', 40, 130);
     
     res.setHeader('Content-Type', 'image/png');
     return res.status(200).send(errorCanvas.toBuffer('image/png'));
