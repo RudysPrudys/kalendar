@@ -2,7 +2,6 @@ import { createCanvas } from '@napi-rs/canvas';
 import ical from 'node-ical';
 
 export default async function handler(req, res) {
-  // CORS hlavičky pro jistotu, pokud byste obrázek načítali odjinud
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   
@@ -11,15 +10,17 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Získání domény pro volání vašeho get-calendar.js
-    const protocol = req.headers['x-forwarded-proto'] || 'http';
-    const host = req.headers.host;
-    const calendarUrl = `${protocol}://${host}/api/get-calendar`; // Zkontrolujte, zda máte v názvu souboru "calendar" nebo "kalendar"
+    // 1. Přímá URL na váš iCloud kalendář (převzato z get-calendar.js)
+    const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
 
-    // 2. Načtení a naparsování .ics dat přímo z vašeho API
-    const webEvents = await ical.fromURL(calendarUrl);
+    // 2. Stažení a naparsování ICS textu s User-Agentem, který Apple vyžaduje
+    const webEvents = await ical.fromURL(icloudUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
     
-    // 3. Zpracování a filtrace událostí (chceme jen budoucí nebo dnešní)
+    // 3. Zpracování a filtrace událostí
     const ted = new Date();
     const udalosti = [];
 
@@ -29,8 +30,9 @@ export default async function handler(req, res) {
         if (ev.type === 'VEVENT') {
           const startDate = new Date(ev.start);
           
-          // Ignorujeme události starší než 2 hodiny, aby na displeji chvíli zůstala i právě probíhající událost
-          if (startDate.getTime() > ted.getTime() - (2 * 60 * 60 * 1000)) {
+          // Zobrazíme události, které ještě neskončily, nebo začínají v budoucnu
+          // (Ponecháme události, které začaly max před 3 hodinami)
+          if (startDate.getTime() > ted.getTime() - (3 * 60 * 60 * 1000)) {
             udalosti.push({
               title: ev.summary || 'Bez názvu',
               start: startDate,
@@ -40,25 +42,25 @@ export default async function handler(req, res) {
       }
     }
 
-    // Seřadíme události od nejbližší po nejvzdálenější
+    // Seřazení od nejbližší
     udalosti.sort((a, b) => a.start - b.start);
 
-    // 4. Inicializace plátna (Canvas) pro CrowPanel (800x480)
+    // 4. Inicializace plátna (800x480)
     const width = 800;
     const height = 480;
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // Čisté bílé pozadí
+    // Bílé pozadí
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, width, height);
 
-    // Záhlaví kalendáře
+    // Záhlaví
     ctx.fillStyle = '#111827';
     ctx.font = 'bold 32px sans-serif';
     ctx.fillText('Můj iCloud Kalendář', 40, 60);
 
-    // Hlavní dělící čára pod záhlavím
+    // Hlavní linka
     ctx.strokeStyle = '#1F2937';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -66,42 +68,46 @@ export default async function handler(req, res) {
     ctx.lineTo(760, 85);
     ctx.stroke();
 
-    // 5. Vykreslení seznamu událostí
+    // 5. Vykreslení textů událostí
     let yOffset = 140;
-    const maxUdalosti = 5; // Kolik řádků se bezpečně vejde pod sebe
+    const maxUdalosti = 5;
 
     if (udalosti.length === 0) {
+      // Pokud je pole prázdné, vypíšeme to na displej, abychom viděli, že kód běží
       ctx.fillStyle = '#6B7280';
       ctx.font = 'italic 24px sans-serif';
-      ctx.fillText('Žádné nadcházející události.', 40, yOffset);
+      ctx.fillText('Žádné nadcházející události v iCloudu.', 40, yOffset);
     } else {
-      // Vezmeme jen prvních X událostí
       const kZobrazeni = udalosti.slice(0, maxUdalosti);
 
       kZobrazeni.forEach((udalost) => {
-        // Formátování data a času pro ČR prostředí
         const dny = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
         const denTydne = dny[udalost.start.getDay()];
+        
+        // Formátování dne a měsíce
         const formatovaneDatum = `${denTydne} ${udalost.start.getDate()}. ${udalost.start.getMonth() + 1}.`;
-        const formatovanyCas = udalost.start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+        
+        // Bezpečné formátování času pro Node.js prostředí na Vercelu
+        const hodiny = String(udalost.start.getHours()).padStart(2, '0');
+        const minuty = String(udalost.start.getMinutes()).padStart(2, '0');
+        const formatovanyCas = `${hodiny}:${minuty}`;
 
-        // Čas a datum (Levý sloupec) - Výrazná tmavá/modrá
+        // Vykreslení data a času (Modrá)
         ctx.fillStyle = '#2563EB';
         ctx.font = 'bold 22px sans-serif';
         ctx.fillText(`${formatovaneDatum} v ${formatovanyCas}`, 40, yOffset);
 
-        // Název události (Pravý sloupec)
+        // Vykreslení názvu (Černá)
         ctx.fillStyle = '#111827';
         ctx.font = '22px sans-serif';
         
-        // Ochrana proti přetečení textu mimo obrazovku (zkrácení dlouhých názvů)
         let nazev = udalost.title;
         if (nazev.length > 35) {
           nazev = nazev.substring(0, 32) + '...';
         }
         ctx.fillText(nazev, 340, yOffset);
 
-        // Jemná linka mezi událostmi
+        // Mezirádková linka
         ctx.strokeStyle = '#E5E7EB';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -109,21 +115,32 @@ export default async function handler(req, res) {
         ctx.lineTo(760, yOffset + 20);
         ctx.stroke();
 
-        yOffset += 65; // Posun na další řádek
+        yOffset += 65;
       });
     }
 
-    // 6. Vygenerování PNG obrázku
+    // 6. Odeslání PNG obrázku
     const buffer = canvas.toBuffer('image/png');
-
-    // 7. Odeslání do displeje
     res.setHeader('Content-Type', 'image/png');
-    // Cache na 5 minut, ať šetříte procesor i Cloud funkce na Vercelu
-    res.setHeader('Cache-Control', 'public, max-age=300'); 
+    res.setHeader('Cache-Control', 'public, max-age=60, must-revalidate'); // Snížena cache na 1 minutu pro testování
     return res.status(200).send(buffer);
 
   } catch (error) {
-    console.error('Chyba při generování obrázku:', error);
-    return res.status(500).json({ error: 'Nepodařilo se vygenerovat obrázek kalendáře', details: error.message });
+    console.error('Chyba na Vercelu:', error);
+    
+    // Pokud selže úplně všechno, vykreslíme chybu přímo do obrázku, abyste ji viděl na mobilu
+    const errorCanvas = createCanvas(800, 480);
+    const errorCtx = errorCanvas.getContext('2d');
+    errorCtx.fillStyle = '#FFFFFF';
+    errorCtx.fillRect(0, 0, 800, 480);
+    errorCtx.fillStyle = '#DC2626';
+    errorCtx.font = 'bold 20px sans-serif';
+    errorCtx.fillText('Chyba při generování obrázku:', 40, 100);
+    errorCtx.fillStyle = '#111827';
+    errorCtx.font = '16px sans-serif';
+    errorCtx.fillText(error.message, 40, 140);
+    
+    res.setHeader('Content-Type', 'image/png');
+    return res.status(200).send(errorCanvas.toBuffer('image/png'));
   }
 }
