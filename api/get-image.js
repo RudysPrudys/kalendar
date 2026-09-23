@@ -9,10 +9,23 @@ try {
   console.error('Nepodařilo se načíst lokální font:', e);
 }
 
-// POMOCNÁ FUNKCE: Převede jakýkoliv Date objekt do časové zóny Europe/Prague
+// POMOCNÁ FUNKCE: Převede Date objekt do časové zóny Europe/Prague
 function ziskejCeskyCas(vstupniDatum = new Date()) {
   const czString = vstupniDatum.toLocaleString('en-US', { timeZone: 'Europe/Prague' });
   return new Date(czString);
+}
+
+// POMOCNÁ FUNKCE: Mapování kódů Open-Meteo na český text
+function interpretujPocasivText(kod) {
+  if (kod === 0) return 'Jasno';
+  if ([1, 2, 3].includes(kod)) return 'Polojasno';
+  if ([45, 48].includes(kod)) return 'Mlha';
+  if ([51, 53, 55].includes(kod)) return 'Mrholení';
+  if ([61, 63, 65].includes(kod)) return 'Déšť';
+  if ([71, 73, 75].includes(kod)) return 'Sněžení';
+  if ([80, 81, 82].includes(kod)) return 'Přeháňky';
+  if ([95, 96, 99].includes(kod)) return 'Bouřka';
+  return 'Proměnlivo';
 }
 
 export default async function handler(req, res) {
@@ -26,23 +39,23 @@ export default async function handler(req, res) {
   try {
     const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
 
-    const webEvents = await ical.fromURL(icloudUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
-    });
+    // 1. Souběžné stahování kalendáře a počasí (ušetří čas načítání)
+    const pocalUrl = "https://open-meteo.com";
     
-    // Aktuální čas přepnutý na české pásmo (vyřeší UTC posun serveru)
+    const [calendarResponse, weatherResponse] = await Promise.all([
+      ical.fromURL(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }).catch(() => ({})),
+      fetch(pocalUrl).then(r => r.json()).catch(() => null)
+    ]);
+
+    // 2. Zpracování času a kalendáře
     const ted = ziskejCeskyCas(new Date());
     const udalosti = [];
 
-    for (const k in webEvents) {
-      if (webEvents.hasOwnProperty(k)) {
-        const ev = webEvents[k];
+    for (const k in calendarResponse) {
+      if (calendarResponse.hasOwnProperty(k)) {
+        const ev = calendarResponse[k];
         if (ev.type === 'VEVENT') {
-          // Čas události z kalendáře také převedeme do českého pásma
           const startDate = ziskejCeskyCas(new Date(ev.start));
-          
           if (startDate.getTime() > ted.getTime() - (2 * 60 * 60 * 1000)) {
             udalosti.push({
               title: ev.summary || 'Bez názvu',
@@ -52,64 +65,90 @@ export default async function handler(req, res) {
         }
       }
     }
-
-    // Seřazení událostí podle času
     udalosti.sort((a, b) => a.start - b.start);
 
-    // Inicializace plátna 800x480
+    // 3. Extrakce dat o počasí
+    let pocasiText = "Předpověď nedostupná";
+    let teplotaMaxMin = "-- / -- °C";
+    if (weatherResponse && weatherResponse.daily) {
+      const kod = weatherResponse.daily.weather_code[0];
+      const maxT = Math.round(weatherResponse.daily.temperature_2m_max[0]);
+      const minT = Math.round(weatherResponse.daily.temperature_2m_min[0]);
+      pocasiText = interpretujPocasivText(kod);
+      teplotaMaxMin = `${maxT}°C / ${minT}°C`;
+    }
+
+    // 4. Inicializace plátna (800x480)
     const width = 800;
     const height = 480;
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // Základní pozadí (Pravá strana pro události)
+    // Pozadí a předěl
     ctx.fillStyle = '#F9FAFB';
     ctx.fillRect(0, 0, width, height);
-
-    // LEVÝ PANEL (Widget s časem a datem)
     ctx.fillStyle = '#111827';
     ctx.fillRect(0, 0, 280, height);
-
-    // Dekorační barevný pruh na předělu panelů (Modrý akcent)
     ctx.fillStyle = '#3B82F6';
     ctx.fillRect(276, 0, 4, height);
 
-    // LEVÝ PANEL: AKTUÁLNÍ ČAS A DATUM (Český formát)
-    const dnyTydnePlne = ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'];
-    const mesicePlne = ['ledna', 'února', 'března', 'dubna', 'května', 'června', 'července', 'srpna', 'září', 'října', 'listopadu', 'prosince'];
-
-    // Správně lokalizovaný čas
+    // ----------------------------------------------------
+    // LEVÝ PANEL: HODINY A DATUM
+    // ----------------------------------------------------
+    ctx.textAlign = 'center';
+    
     const aktHodiny = String(ted.getHours()).padStart(2, '0');
     const aktMinuty = String(ted.getMinutes()).padStart(2, '0');
-    
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 64px DisplejFont';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${aktHodiny}:${aktMinuty}`, 140, 100);
+    ctx.fillText(`${aktHodiny}:${aktMinuty}`, 140, 85);
 
-    // Název dne
+    const dnyTydnePlne = ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'];
     ctx.fillStyle = '#9CA3AF';
-    ctx.font = '22px DisplejFont';
-    ctx.fillText(dnyTydnePlne[ted.getDay()], 140, 150);
+    ctx.font = '18px DisplejFont';
+    ctx.fillText(dnyTydnePlne[ted.getDay()], 140, 125);
 
-    // Velké číslo dne
     ctx.fillStyle = '#3B82F6';
-    ctx.font = 'bold 80px DisplejFont';
-    ctx.fillText(ted.getDate(), 140, 250);
+    ctx.font = 'bold 70px DisplejFont';
+    ctx.fillText(ted.getDate(), 140, 210);
 
-    // Měsíc a rok
+    const mesicePlne = ['ledna', 'února', 'března', 'dubna', 'května', 'června', 'července', 'srpna', 'září', 'října', 'listopadu', 'prosince'];
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 20px DisplejFont';
-    ctx.fillText(mesicePlne[ted.getMonth()], 140, 295);
-    
-    ctx.fillStyle = '#6B7280';
-    ctx.font = '16px DisplejFont';
-    ctx.fillText(ted.getFullYear(), 140, 325);
+    ctx.font = 'bold 18px DisplejFont';
+    ctx.fillText(`${mesicePlne[ted.getMonth()]} ${ted.getFullYear()}`, 140, 250);
 
-    // Reset zarovnání textu doleva
+    // ----------------------------------------------------
+    // NOVINKA - LEVÝ PANEL: PŘEDPOVĚĎ POČASÍ (od y=290 dolů)
+    // ----------------------------------------------------
+    // Jemná dělící linka pro sekci počasí
+    ctx.strokeStyle = '#374151';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(30, 285);
+    ctx.lineTo(250, 285);
+    ctx.stroke();
+
+    // Titulek sekce
+    ctx.fillStyle = '#9CA3AF';
+    ctx.font = '13px DisplejFont';
+    ctx.fillText('DNEŠNÍ POČASÍ', 140, 315);
+
+    // Stav počasí textově
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 22px DisplejFont';
+    ctx.fillText(pocasiText, 140, 355);
+
+    // Teplotní rozsah (Max / Min)
+    ctx.fillStyle = '#3B82F6';
+    ctx.font = 'bold 24px DisplejFont';
+    ctx.fillText(teplotaMaxMin, 140, 400);
+
+    // Reset zarovnání pro pravý panel
     ctx.textAlign = 'left';
 
-    // PRAVÝ PANEL: NADCHÁZEJÍCÍ UDÁLOSTI
+    // ----------------------------------------------------
+    // PRAVÝ PANEL: KALENDÁŘ
+    // ----------------------------------------------------
     ctx.fillStyle = '#1F2937';
     ctx.font = 'bold 24px DisplejFont';
     ctx.fillText('Nadcházející události', 315, 50);
@@ -121,13 +160,11 @@ export default async function handler(req, res) {
       ctx.fillStyle = '#F3F4F6';
       stiskniZaoblenyObdelnik(ctx, 315, yOffset, 450, 80, 8);
       ctx.fill();
-      
       ctx.fillStyle = '#6B7280';
       ctx.font = 'italic 18px DisplejFont';
       ctx.fillText('Žádné plánované události', 340, yOffset + 45);
     } else {
       const kZobrazeni = udalosti.slice(0, maxUdalosti);
-
       kZobrazeni.forEach((udalost) => {
         const dnyKratke = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
         const denTydneKratky = dnyKratke[udalost.start.getDay()];
@@ -143,29 +180,23 @@ export default async function handler(req, res) {
         ctx.shadowColor = 'rgba(0, 0, 0, 0.03)';
         ctx.shadowBlur = 4;
         ctx.shadowOffsetY = 2;
-        
         stiskniZaoblenyObdelnik(ctx, 315, yOffset, 450, 64, 8);
         ctx.fill();
-        
         ctx.shadowBlur = 0;
         ctx.shadowOffsetY = 0;
 
         ctx.fillStyle = jeDnes ? '#2563EB' : '#D1D5DB';
         ctx.fillRect(315, yOffset, 5, 64); 
 
-        // Čas a Datum
         ctx.fillStyle = '#2563EB';
         ctx.font = 'bold 16px DisplejFont';
         ctx.fillText(formatovanyCas, 335, yOffset + 28);
-        
         ctx.fillStyle = '#6B7280';
         ctx.font = '13px DisplejFont';
         ctx.fillText(formatovaneDatum, 335, yOffset + 48);
 
-        // Název události
         ctx.fillStyle = '#111827';
         ctx.font = 'bold 17px DisplejFont';
-        
         let nazev = udalost.title;
         if (nazev.length > 34) {
           nazev = nazev.substring(0, 31) + '...';
@@ -190,10 +221,6 @@ export default async function handler(req, res) {
     errorCtx.fillStyle = '#EF4444';
     errorCtx.font = 'bold 24px DisplejFont';
     errorCtx.fillText('Chyba systému', 50, 80);
-    errorCtx.fillStyle = '#9CA3AF';
-    errorCtx.font = '16px DisplejFont';
-    errorCtx.fillText(error.message || 'Neznámá chyba', 50, 130);
-    
     res.setHeader('Content-Type', 'image/png');
     return res.status(200).send(errorCanvas.toBuffer('image/png'));
   }
