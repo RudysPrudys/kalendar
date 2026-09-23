@@ -9,6 +9,12 @@ try {
   console.error('Nepodařilo se načíst lokální font:', e);
 }
 
+// POMOCNÁ FUNKCE: Převede jakýkoliv Date objekt do časové zóny Europe/Prague
+function ziskejCeskyCas(vstupniDatum = new Date()) {
+  const czString = vstupniDatum.toLocaleString('en-US', { timeZone: 'Europe/Prague' });
+  return new Date(czString);
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -26,15 +32,17 @@ export default async function handler(req, res) {
       }
     });
     
-    // Aktuální čas pro widget a pro filtraci
-    const ted = new Date();
+    // Aktuální čas přepnutý na české pásmo (vyřeší UTC posun serveru)
+    const ted = ziskejCeskyCas(new Date());
     const udalosti = [];
 
     for (const k in webEvents) {
       if (webEvents.hasOwnProperty(k)) {
         const ev = webEvents[k];
         if (ev.type === 'VEVENT') {
-          const startDate = new Date(ev.start);
+          // Čas události z kalendáře také převedeme do českého pásma
+          const startDate = ziskejCeskyCas(new Date(ev.start));
+          
           if (startDate.getTime() > ted.getTime() - (2 * 60 * 60 * 1000)) {
             udalosti.push({
               title: ev.summary || 'Bez názvu',
@@ -54,29 +62,23 @@ export default async function handler(req, res) {
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // ----------------------------------------------------
-    // GRAFICKÝ NÁVRH: POZADÍ A ROZDĚLENÍ DISPLEJE
-    // ----------------------------------------------------
-    
     // Základní pozadí (Pravá strana pro události)
-    ctx.fillStyle = '#F9FAFB'; // Velmi světle šedá
+    ctx.fillStyle = '#F9FAFB';
     ctx.fillRect(0, 0, width, height);
 
     // LEVÝ PANEL (Widget s časem a datem)
-    ctx.fillStyle = '#111827'; // Elegantní tmavě grafitová
+    ctx.fillStyle = '#111827';
     ctx.fillRect(0, 0, 280, height);
 
     // Dekorační barevný pruh na předělu panelů (Modrý akcent)
     ctx.fillStyle = '#3B82F6';
     ctx.fillRect(276, 0, 4, height);
 
-    // ----------------------------------------------------
     // LEVÝ PANEL: AKTUÁLNÍ ČAS A DATUM (Český formát)
-    // ----------------------------------------------------
     const dnyTydnePlne = ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'];
     const mesicePlne = ['ledna', 'února', 'března', 'dubna', 'května', 'června', 'července', 'srpna', 'září', 'října', 'listopadu', 'prosince'];
 
-    // 1. Aktuální čas (Velký digitální ciferník)
+    // Správně lokalizovaný čas
     const aktHodiny = String(ted.getHours()).padStart(2, '0');
     const aktMinuty = String(ted.getMinutes()).padStart(2, '0');
     
@@ -85,17 +87,17 @@ export default async function handler(req, res) {
     ctx.textAlign = 'center';
     ctx.fillText(`${aktHodiny}:${aktMinuty}`, 140, 100);
 
-    // 2. Název dne (např. Pondělí)
-    ctx.fillStyle = '#9CA3AF'; // Světle šedá pro sekundární text
+    // Název dne
+    ctx.fillStyle = '#9CA3AF';
     ctx.font = '22px DisplejFont';
     ctx.fillText(dnyTydnePlne[ted.getDay()], 140, 150);
 
-    // 3. Velké číslo dne v měsíci
-    ctx.fillStyle = '#3B82F6'; // Modrá pro zvýraznění dne
+    // Velké číslo dne
+    ctx.fillStyle = '#3B82F6';
     ctx.font = 'bold 80px DisplejFont';
     ctx.fillText(ted.getDate(), 140, 250);
 
-    // 4. Měsíc a rok (např. prosince 2026)
+    // Měsíc a rok
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 20px DisplejFont';
     ctx.fillText(mesicePlne[ted.getMonth()], 140, 295);
@@ -104,23 +106,19 @@ export default async function handler(req, res) {
     ctx.font = '16px DisplejFont';
     ctx.fillText(ted.getFullYear(), 140, 325);
 
-    // reset zarovnání textu na doleva pro zbytek kreslení
+    // Reset zarovnání textu doleva
     ctx.textAlign = 'left';
 
-    // ----------------------------------------------------
     // PRAVÝ PANEL: NADCHÁZEJÍCÍ UDÁLOSTI
-    // ----------------------------------------------------
     ctx.fillStyle = '#1F2937';
     ctx.font = 'bold 24px DisplejFont';
     ctx.fillText('Nadcházející události', 315, 50);
 
     let yOffset = 85;
-    const maxUdalosti = 5; // Vejde se 5 krásných karet
+    const maxUdalosti = 5;
 
     if (udalosti.length === 0) {
-      // Stav, kdy je kalendář prázdný
       ctx.fillStyle = '#F3F4F6';
-      // Zaoblená karta pro prázdný stav
       stiskniZaoblenyObdelnik(ctx, 315, yOffset, 450, 80, 8);
       ctx.fill();
       
@@ -131,7 +129,6 @@ export default async function handler(req, res) {
       const kZobrazeni = udalosti.slice(0, maxUdalosti);
 
       kZobrazeni.forEach((udalost) => {
-        // Příprava dat pro řádek
         const dnyKratke = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
         const denTydneKratky = dnyKratke[udalost.start.getDay()];
         const formatovaneDatum = `${denTydneKratky} ${udalost.start.getDate()}. ${udalost.start.getMonth() + 1}.`;
@@ -140,10 +137,8 @@ export default async function handler(req, res) {
         const min = String(udalost.start.getMinutes()).padStart(2, '0');
         const formatovanyCas = `${hod}:${min}`;
 
-        // Kontrola, zda událost není náhodou už dnes (dáme jí jemné modré pozadí)
         const jeDnes = fieldsAreSameDay(ted, udalost.start);
         
-        // Vykreslení bílé/modré zaoblené karty pro událost
         ctx.fillStyle = jeDnes ? '#EFF6FF' : '#FFFFFF'; 
         ctx.shadowColor = 'rgba(0, 0, 0, 0.03)';
         ctx.shadowBlur = 4;
@@ -152,11 +147,9 @@ export default async function handler(req, res) {
         stiskniZaoblenyObdelnik(ctx, 315, yOffset, 450, 64, 8);
         ctx.fill();
         
-        // Reset stínů, aby se neaplikovaly na text
         ctx.shadowBlur = 0;
         ctx.shadowOffsetY = 0;
 
-        // Barevný indikátor na začátku karty (Dnes = tmavě modrá, jindy = světlá)
         ctx.fillStyle = jeDnes ? '#2563EB' : '#D1D5DB';
         ctx.fillRect(315, yOffset, 5, 64); 
 
@@ -179,11 +172,10 @@ export default async function handler(req, res) {
         }
         ctx.fillText(nazev, 450, yOffset + 38);
 
-        yOffset += 76; // Posun na další kartu (64px karta + 12px mezera)
+        yOffset += 76;
       });
     }
 
-    // Odeslání PNG obrázku
     const buffer = canvas.toBuffer('image/png');
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=10, must-revalidate'); 
@@ -191,7 +183,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Kritická chyba:', error);
-    // Vykreslení chybové obrazovky v novém stylu
     const errorCanvas = createCanvas(800, 480);
     const errorCtx = errorCanvas.getContext('2d');
     errorCtx.fillStyle = '#111827';
@@ -208,7 +199,6 @@ export default async function handler(req, res) {
   }
 }
 
-// Pomocná funkce pro kreslení zaoblených obdélníků (karet)
 function stiskniZaoblenyObdelnik(ctx, x, y, width, height, radius) {
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
@@ -223,7 +213,6 @@ function stiskniZaoblenyObdelnik(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
-// Pomocná funkce pro ověření, zda je událost dnes
 function fieldsAreSameDay(date1, date2) {
   return date1.getDate() === date2.getDate() &&
          date1.getMonth() === date2.getMonth() &&
