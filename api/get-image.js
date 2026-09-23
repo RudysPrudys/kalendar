@@ -38,10 +38,9 @@ export default async function handler(req, res) {
 
   try {
     const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
-    // NOVÉ API: Použití zaručeně stabilního wttr.in v JSON formátu pro Prahu (Czechia)
     const pocalUrl = "https://wttr.in";
     
-    // Souběžné stažení kalendáře a nového počasí
+    // Souběžné stažení kalendáře a počasí
     const [calendarResponse, weatherResponse] = await Promise.all([
       ical.fromURL(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }).catch(() => ({})),
       fetch(pocalUrl).then(r => r.json()).catch(() => null)
@@ -67,17 +66,22 @@ export default async function handler(req, res) {
     }
     udalosti.sort((a, b) => a.start - b.start);
 
-    // EXTRAKCE DAT Z NOVÉHO ROZHRANÍ WTTR.IN
+    // ----------------------------------------------------
+    // OPRAVA: OPRAVENÉ INDEXY PRO PARSOVÁNÍ WTTR.IN JSONU
+    // ----------------------------------------------------
     let pocasiText = "Polojasno";
-    let teplotaMaxMin = "15°C / 7°C"; // Reálný podzimní fallback, kdyby síť přesto selhala
+    let teplotaMaxMin = "-- / -- °C";
     
-    if (weatherResponse && weatherResponse.weather && weatherResponse.weather[0]) {
-      const dnesniData = weatherResponse.weather[0];
+    if (weatherResponse && Array.isArray(weatherResponse.weather) && weatherResponse.weather.length > 0) {
+      const dnesniData = weatherResponse.weather[0]; // Načtení prvního dne z pole (dnes)
       const maxT = Math.round(dnesniData.maxtempC);
       const minT = Math.round(dnesniData.mintempC);
       
-      // Získání popisu počasí z aktuálního stavu nebo předpovědi
-      const stavRaw = dnesniData.hourly && dnesniData.hourly[4] ? dnesniData.hourly[4].weatherDesc[0].value : "Partly cloudy";
+      // Bezpečné načtení textového stavu počasí z hourly parametrů
+      let stavRaw = "Partly cloudy";
+      if (dnesniData.hourly && dnesniData.hourly.length > 0 && dnesniData.hourly[0].weatherDesc && dnesniData.hourly[0].weatherDesc.length > 0) {
+        stavRaw = dnesniData.hourly[0].weatherDesc[0].value;
+      }
       
       pocasiText = prelozPocasi(stavRaw);
       teplotaMaxMin = `${maxT}°C / ${minT}°C`;
@@ -97,9 +101,7 @@ export default async function handler(req, res) {
     ctx.fillStyle = '#3B82F6';
     ctx.fillRect(276, 0, 4, height);
 
-    // ----------------------------------------------------
     // LEVÝ PANEL: HODINY A DATUM (ZACHOVÁNY POZICE)
-    // ----------------------------------------------------
     ctx.textAlign = 'center';
     
     const aktHodiny = String(ted.getHours()).padStart(2, '0');
@@ -122,9 +124,7 @@ export default async function handler(req, res) {
     ctx.font = 'bold 18px DisplejFont';
     ctx.fillText(`${mesicePlne[ted.getMonth()]} ${ted.getFullYear()}`, 140, 250);
 
-    // ----------------------------------------------------
     // LEVÝ PANEL: PŘEDPOVĚĎ POČASÍ (ZACHOVÁNY POZICE)
-    // ----------------------------------------------------
     ctx.strokeStyle = '#374151';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -147,9 +147,7 @@ export default async function handler(req, res) {
     // Reset zarovnání pro pravý panel
     ctx.textAlign = 'left';
 
-    // ----------------------------------------------------
     // PRAVÝ PANEL: KALENDÁŘ (ZACHOVÁNY POZICE)
-    // ----------------------------------------------------
     ctx.fillStyle = '#1F2937';
     ctx.font = 'bold 24px DisplejFont';
     ctx.fillText('Nadcházející události', 315, 50);
