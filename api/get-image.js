@@ -1,180 +1,129 @@
+import { createCanvas } from '@napi-rs/canvas';
+import ical from 'node-ical';
+
 export default async function handler(req, res) {
-  // Hlavičky pro CORS a zákaz ukládání do mezipaměti
+  // CORS hlavičky pro jistotu, pokud byste obrázek načítali odjinud
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-
-  const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
-  const weatherUrl = "https://open-meteo.com";
-
-  let icalRawText = "";
-  let weatherData = null;
-
-  // Stahování dat
-  try {
-    const icalRes = await fetch(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-    if (icalRes.ok) icalRawText = await icalRes.text();
-  } catch (e) {}
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
   try {
-    const weatherRes = await fetch(weatherUrl);
-    if (weatherRes.ok) weatherData = await weatherRes.json();
-  } catch (e) {}
+    // 1. Získání domény pro volání vašeho get-calendar.js
+    const protocol = req.headers['x-forwarded-proto'] || 'http';
+    const host = req.headers.host;
+    const calendarUrl = `${protocol}://${host}/api/get-calendar`; // Zkontrolujte, zda máte v názvu souboru "calendar" nebo "kalendar"
 
-  // Jednoduchý iCal Parser
-  const events = [];
-  if (icalRawText) {
-    const lines = icalRawText.split(/\r?\n/);
-    let currentEvent = null;
+    // 2. Načtení a naparsování .ics dat přímo z vašeho API
+    const webEvents = await ical.fromURL(calendarUrl);
+    
+    // 3. Zpracování a filtrace událostí (chceme jen budoucí nebo dnešní)
+    const ted = new Date();
+    const udalosti = [];
 
-    for (let line of lines) {
-      const trimmed = line.trim();
-      if (trimmed === "BEGIN:VEVENT") {
-        currentEvent = { summary: "Bez názvu", start: null, isAllDay: false };
-      } else if (trimmed === "END:VEVENT" && currentEvent) {
-        if (currentEvent.start) events.push(currentEvent);
-        currentEvent = null;
-      } else if (currentEvent) {
-        if (trimmed.startsWith("SUMMARY:")) {
-          currentEvent.summary = trimmed.replace("SUMMARY:", "").trim();
-        } else if (trimmed.startsWith("DTSTART")) {
-          const cleanPart = trimmed.split(":").pop().trim();
-          const year = parseInt(cleanPart.substring(0, 4));
-          const month = parseInt(cleanPart.substring(4, 6)) - 1;
-          const day = parseInt(cleanPart.substring(6, 8));
+    for (const k in webEvents) {
+      if (webEvents.hasOwnProperty(k)) {
+        const ev = webEvents[k];
+        if (ev.type === 'VEVENT') {
+          const startDate = new Date(ev.start);
           
-          if (trimmed.includes("VALUE=DATE") || cleanPart.length < 9) {
-            currentEvent.start = new Date(year, month, day, 0, 0, 0);
-            currentEvent.isAllDay = true;
-          } else {
-            const hour = parseInt(cleanPart.substring(9, 11)) || 0;
-            const minute = parseInt(cleanPart.substring(11, 13)) || 0;
-            if (cleanPart.endsWith("Z")) {
-              currentEvent.start = new Date(Date.UTC(year, month, day, hour, minute, 0));
-            } else {
-              currentEvent.start = new Date(year, month, day, hour, minute, 0);
-            }
+          // Ignorujeme události starší než 2 hodiny, aby na displeji chvíli zůstala i právě probíhající událost
+          if (startDate.getTime() > ted.getTime() - (2 * 60 * 60 * 1000)) {
+            udalosti.push({
+              title: ev.summary || 'Bez názvu',
+              start: startDate,
+            });
           }
         }
       }
     }
-  }
 
-  // Řazení událostí od nejbližších
-  events.sort((a, b) => a.start - b.start);
-  
-  // Nastavení dnešní půlnoci pro zobrazení všech 5 událostí bez mizení v průběhu dne
-  const dnesPulnoc = new Date();
-  dnesPulnoc.setHours(0, 0, 0, 0);
-  
-  const budouciEvents = events.filter(ev => {
-    const evCas = new Date(ev.start.getTime());
-    evCas.setHours(0, 0, 0, 0);
-    return evCas >= dnesPulnoc;
-  }).slice(0, 5);
+    // Seřadíme události od nejbližší po nejvzdálenější
+    udalosti.sort((a, b) => a.start - b.start);
 
-  const dnyTyždne = ["NEDĚLE", "PONDĚLÍ", "ÚTERÝ", "STŘEDA", "ČTVRTEK", "PÁTEK", "SOBOTA"];
-  const mesice = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
-  
-  const ceskyCas = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }));
-  const jmenoDne = dnyTyždne[ceskyCas.getDay()];
-  const cisloDne = ceskyCas.getDate();
-  const jmenoMesice = mesice[ceskyCas.getMonth()];
-  const casAktualizace = ceskyCas.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+    // 4. Inicializace plátna (Canvas) pro CrowPanel (800x480)
+    const width = 800;
+    const height = 480;
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
 
-  // HTML Kalendář
-  let htmlEvents = "";
-  if (budouciEvents.length === 0) {
-    htmlEvents = `<div style="color:#86868b; text-align:center; padding:50px 0; font-size:15px; font-weight:500;">Žádné nadcházející události</div>`;
-  } else {
-    budouciEvents.forEach(ev => {
-      const evDencislo = ev.start.getDate();
-      const evDenvTyzdni = ev.start.toLocaleString('cs-CZ', { weekday: 'short' }).toUpperCase();
-      const timeString = ev.isAllDay ? "Celý den" : ev.start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
-      const cleanSummary = ev.summary.replace(/\\,/g, ",").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    // Čisté bílé pozadí
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, width, height);
 
-      htmlEvents += `
-        <div style="display:flex; align-items:center; background:#2c2c2e; padding:5px 10px; margin-bottom:4px; border-radius:8px; border-left:4px solid #0a84ff;">
-          <div style="background:#1c1c1e; padding:4px 6px; border-radius:6px; text-align:center; min-width:44px; margin-right:12px;">
-            <span style="font-size:9px; font-weight:800; color:#ef4444; display:block; margin-bottom:1px;">` + evDenvTyzdni + `</span>
-            <span style="font-size:15px; font-weight:700; color:#ffffff; display:block; line-height:15px;">` + evDencislo + `</span>
-          </div>
-          <div style="flex:1; min-width:0;">
-            <div style="font-size:14px; font-weight:600; color:#f5f5f7; margin-bottom:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">` + cleanSummary + `</div>
-            <div style="font-size:11px; color:#3b82f6; font-weight:700;">🕒 ` + timeString + `</div>
-          </div>
-        </div>`;
-    });
-  }
+    // Záhlaví kalendáře
+    ctx.fillStyle = '#111827';
+    ctx.font = 'bold 32px sans-serif';
+    ctx.fillText('Můj iCloud Kalendář', 40, 60);
 
-  // HTML Počasí
-  let htmlWeather = "";
-  if (weatherData && weatherData.daily) {
-    const codes = {
-      0: { ico: "☀️" }, 1: { ico: "⛅" }, 2: { ico: "⛅" }, 3: { ico: "⛅" },
-      45: { ico: "🌫️" }, 48: { ico: "🌫️" }, 51: { ico: "🌧️" }, 53: { ico: "🌧️" },
-      55: { ico: "🌧️" }, 61: { ico: "🌧️" }, 63: { ico: "🌧️" }, 65: { ico: "🌧️" },
-      71: { ico: "❄️" }, 73: { ico: "❄️" }, 75: { ico: "❄️" }, 77: { ico: "❄️" }
-    };
+    // Hlavní dělící čára pod záhlavím
+    ctx.strokeStyle = '#1F2937';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(40, 85);
+    ctx.lineTo(760, 85);
+    ctx.stroke();
 
-    const dnyKratke = ["DNES", "ZÍTRA", "POZÍTŘÍ"];
-    for (let i = 0; i < 3; i++) {
-      const maxT = Math.round(weatherData.daily.temperature_2m_max[i]);
-      const minT = Math.round(weatherData.daily.temperature_2m_min[i]);
-      const code = weatherData.daily.weathercode[i];
-      const wInfo = codes[code] || { ico: "☁️" };
-      const denLabel = dnyKratke[i];
+    // 5. Vykreslení seznamu událostí
+    let yOffset = 140;
+    const maxUdalosti = 5; // Kolik řádků se bezpečně vejde pod sebe
 
-      htmlWeather += `
-        <div class="weather-day">
-          <span style="font-weight:800; color:#a0a0ab; text-transform:uppercase; font-size:10px; letter-spacing:0.5px; margin-bottom:2px;">` + denLabel + `</span>
-          <span style="font-size:26px; margin:2px 0; display:block;">` + wInfo.ico + `</span>
-          <span style="font-weight:600; font-size:13px; color:#ffffff;">` + maxT + `° / <span style="color:#71717a;">` + minT + `°</span></span>
-        </div>`;
+    if (udalosti.length === 0) {
+      ctx.fillStyle = '#6B7280';
+      ctx.font = 'italic 24px sans-serif';
+      ctx.fillText('Žádné nadcházející události.', 40, yOffset);
+    } else {
+      // Vezmeme jen prvních X událostí
+      const kZobrazeni = udalosti.slice(0, maxUdalosti);
+
+      kZobrazeni.forEach((udalost) => {
+        // Formátování data a času pro ČR prostředí
+        const dny = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
+        const denTydne = dny[udalost.start.getDay()];
+        const formatovaneDatum = `${denTydne} ${udalost.start.getDate()}. ${udalost.start.getMonth() + 1}.`;
+        const formatovanyCas = udalost.start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+
+        // Čas a datum (Levý sloupec) - Výrazná tmavá/modrá
+        ctx.fillStyle = '#2563EB';
+        ctx.font = 'bold 22px sans-serif';
+        ctx.fillText(`${formatovaneDatum} v ${formatovanyCas}`, 40, yOffset);
+
+        // Název události (Pravý sloupec)
+        ctx.fillStyle = '#111827';
+        ctx.font = '22px sans-serif';
+        
+        // Ochrana proti přetečení textu mimo obrazovku (zkrácení dlouhých názvů)
+        let nazev = udalost.title;
+        if (nazev.length > 35) {
+          nazev = nazev.substring(0, 32) + '...';
+        }
+        ctx.fillText(nazev, 340, yOffset);
+
+        // Jemná linka mezi událostmi
+        ctx.strokeStyle = '#E5E7EB';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(40, yOffset + 20);
+        ctx.lineTo(760, yOffset + 20);
+        ctx.stroke();
+
+        yOffset += 65; // Posun na další řádek
+      });
     }
-  } else {
-    htmlWeather = `<div style="color:#ef4444; font-size:12px; width:100%; text-align:center; padding:10px 0;">⚠️ Problém s daty počasí</div>`;
+
+    // 6. Vygenerování PNG obrázku
+    const buffer = canvas.toBuffer('image/png');
+
+    // 7. Odeslání do displeje
+    res.setHeader('Content-Type', 'image/png');
+    // Cache na 5 minut, ať šetříte procesor i Cloud funkce na Vercelu
+    res.setHeader('Cache-Control', 'public, max-age=300'); 
+    return res.status(200).send(buffer);
+
+  } catch (error) {
+    console.error('Chyba při generování obrázku:', error);
+    return res.status(500).json({ error: 'Nepodařilo se vygenerovat obrázek kalendáře', details: error.message });
   }
-
-  const finalHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        * { box-sizing: border-box; }
-        html, body { margin:0; padding:0; background:#09090b; font-family:-apple-system, BlinkMacSystemFont, sans-serif; overflow:hidden; width:800px; height:480px; }
-        .dashboard { width:800px; height:480px; display:flex; background:#09090b; align-items:stretch; }
-        .left-panel { width:220px; height:100%; background:#111113; border-right:2px solid #27272a; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:15px; text-align:center; }
-        .right-panel { width:580px; height:100%; padding:15px 20px 12px 20px; display:flex; flex-direction:column; justify-content:space-between; }
-        .weather-box { display:flex; justify-content:space-between; background:#18181b; border:1px solid #27272a; padding:10px 6px; border-radius:12px; width:100%; height:76px; align-items:center; }
-        .weather-day { text-align: center; flex: 1; color: #f5f5f7; }
-        .weather-day span { display: block; }
-      </style>
-    </head>
-    <body>
-      <div class="dashboard">
-        <div class="left-panel">
-          <div style="font-size: 13px; font-weight: 800; color: #ef4444; letter-spacing: 2px; margin-bottom: 12px; text-transform: uppercase;">` + jmenoDne + `</div>
-          <div style="font-size: 95px; font-weight: 900; color: #ffffff; line-height: 80px; margin-bottom: 0px;">` + cisloDne + `</div>
-          <div style="font-size: 20px; font-weight: 600; color: #a0a0ab; margin-bottom: 10px;">` + jmenoMesice + `</div>
-          
-          <div style="font-size: 24px; margin-bottom: 15px;">❤️</div>
-          
-          <div style="background: #27272a; color: #a0a0ab; padding: 5px 10px; border-radius: 15px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;">AKTUALIZOVÁNO v ` + casAktualizace + `</div>
-        </div>
-        <div class="right-panel">
-          <div style="width:100%; display:flex; flex-direction:column;">
-            <div style="font-size: 11px; font-weight: 800; color: #a0a0ab; letter-spacing: 1.5px; margin-bottom: 8px;">RODINNÝ KALENDÁŘ</div>
-            ` + htmlEvents + `
-          </div>
-          <div class="weather-box">` + htmlWeather + `</div>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-
-  res.status(200).send(finalHtml);
 }
