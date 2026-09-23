@@ -122,7 +122,7 @@ export default async function handler(req, res) {
     // ----------------------------------------------------
     ctx.fillStyle = '#F8FAFC';
     ctx.font = 'bold 22px DisplejFont';
-    ctx.fillText('NÁSCHÁZEJÍCÍ UDÁLOSTI', 330, 60);
+    ctx.fillText('NADCHÁZEJÍCÍ UDÁLOSTI', 330, 60);
 
     let yOffset = 95;
     const maxUdalosti = 5;
