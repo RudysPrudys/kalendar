@@ -24,7 +24,6 @@ export default async function handler(req, res) {
 
   try {
     const icloudUrl = "https://p41-calendars.icloud.com/published/2/MTIyNTc4MDU4MjQxMjI1N7HBRe4SrbOMeY3BYc83Tk00_qS7cioqmCe26e9wjXEI7QQzsDADgoUP7pulJyg9tlRP3MPsrl4uTdeXFEymRFI";
-
     const calendarResponse = await ical.fromURL(icloudUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }).catch(() => ({}));
     
     const ted = ziskejCeskyCas(new Date());
@@ -36,10 +35,7 @@ export default async function handler(req, res) {
         if (ev.type === 'VEVENT') {
           const startDate = ziskejCeskyCas(new Date(ev.start));
           if (startDate.getTime() > ted.getTime() - (2 * 60 * 60 * 1000)) {
-            udalosti.push({
-              title: ev.summary || 'Bez názvu',
-              start: startDate,
-            });
+            udalosti.push({ title: ev.summary || 'Bez názvu', start: startDate });
           }
         }
       }
@@ -51,18 +47,16 @@ export default async function handler(req, res) {
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // Pozadí
+    // Vykreslení grafiky (Cyber Dark Mode)
     ctx.fillStyle = '#0F172A'; 
     ctx.fillRect(0, 0, width, height);
 
-    // Ambientní efekt
     const gradient = ctx.createRadialGradient(80, 240, 10, 100, 240, 300);
     gradient.addColorStop(0, 'rgba(59, 130, 246, 0.08)');
     gradient.addColorStop(1, 'rgba(15, 23, 42, 0)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 320, height);
 
-    // Dělící linka
     const lineGrad = ctx.createLinearGradient(290, 40, 290, 440);
     lineGrad.addColorStop(0, 'rgba(51, 65, 85, 0.2)');
     lineGrad.addColorStop(0.5, 'rgba(59, 130, 246, 0.6)');
@@ -74,7 +68,7 @@ export default async function handler(req, res) {
     ctx.lineTo(290, 450);
     ctx.stroke();
 
-    // LEVÝ PANEL - ČAS A DATUM
+    // LEVÝ PANEL
     ctx.textAlign = 'center';
     const aktHodiny = String(ted.getHours()).padStart(2, '0');
     const aktMinuty = String(ted.getMinutes()).padStart(2, '0');
@@ -102,7 +96,7 @@ export default async function handler(req, res) {
 
     ctx.textAlign = 'left';
 
-    // PRAVÝ PANEL - UDÁLOSTI
+    // PRAVÝ PANEL
     ctx.fillStyle = '#F8FAFC';
     ctx.font = 'bold 22px DisplejFont';
     ctx.fillText('NADCHÁZEJÍCÍ UDÁLOSTI', 330, 60);
@@ -153,40 +147,51 @@ export default async function handler(req, res) {
         ctx.font = 'bold 16px DisplejFont';
         
         let nazev = udalost.title;
-        if (nazev.length > 28) {
-          nazev = nazev.substring(0, 25) + '...';
-        }
+        if (nazev.length > 28) nazev = nazev.substring(0, 25) + '...';
         ctx.fillText(nazev, 510, yOffset + 35);
         yOffset += 72;
       });
     }
 
-    // ----------------------------------------------------
-    // KRITICKÁ OPRAVA PRO ESP32 SÍŤOVÝ DEKODÉR
-    // ----------------------------------------------------
-    // toBuffer() s explicitní konfigurací: vypne prokládání (interlace: 0)
-    // a vynutí standardní PNG formát bez optimalizací, které pletou PNGdec v Arduinu
-    const buffer = canvas.toBuffer('image/png', {
-      compressionLevel: 6,
-      filters: canvas.PNG_FILTER_NONE,
-      palette:        null,
-      backgroundIndex: 0,
-      interlace:       0  // 0 = ZAKÁZAT PROKLÁDÁNÍ (Klíč k odstranění chyby 7)
-    });
+    // GENERÁTOR ČISTÉHO 24-BITOVÉHO BMP PRO MIKROKONTROLÉRY
+    const imgData = ctx.getImageData(0, 0, width, height).data;
+    const fileSize = 54 + (width * height * 3);
+    const bmpBuffer = Buffer.alloc(fileSize);
 
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Content-Length', buffer.length);
-    res.setHeader('Cache-Control', 'public, max-age=10, must-revalidate'); 
-    return res.status(200).send(buffer);
+    // Hlavička souboru BMP (Bitmap File Header)
+    bmpBuffer.write('BM', 0);
+    bmpBuffer.writeUInt32LE(fileSize, 2);
+    bmpBuffer.writeUInt32LE(54, 10);
+
+    // Hlavička informační (DIB Header)
+    bmpBuffer.writeUInt32LE(40, 14);
+    bmpBuffer.writeInt32LE(width, 18);
+    bmpBuffer.writeInt32LE(-height, 22); // Záporná výška = kreslení shora dolů
+    bmpBuffer.writeUInt16LE(1, 26);
+    bmpBuffer.writeUInt16LE(24, 28); // 24-bit RGB
+    bmpBuffer.writeUInt32LE(0, 30); // Žádná komprese BI_RGB
+
+    // Konverze RGBA z canvasu na BGR pro BMP formát
+    let pos = 54;
+    for (let i = 0; i < imgData.length; i += 4) {
+      bmpBuffer[pos++] = imgData[i + 2]; // B
+      bmpBuffer[pos++] = imgData[i + 1]; // G
+      bmpBuffer[pos++] = imgData[i];     // R
+    }
+
+    res.setHeader('Content-Type', 'image/bmp');
+    res.setHeader('Content-Length', bmpBuffer.length);
+    res.setHeader('Cache-Control', 'public, max-age=5, must-revalidate'); 
+    return res.status(200).send(bmpBuffer);
 
   } catch (error) {
-    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Type', 'image/bmp');
     const canvasChyba = createCanvas(800, 480);
-    return res.status(200).send(canvasChyba.toBuffer('image/png'));
+    return res.status(200).send(canvasChyba.toBuffer());
   }
 }
 
-void function stiskniZaoblenyObdelnik(ctx, x, y, width, height, radius) {
+function stiskniZaoblenyObdelnik(ctx, x, y, width, height, radius) {
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
   ctx.lineTo(x + width - radius, y);
